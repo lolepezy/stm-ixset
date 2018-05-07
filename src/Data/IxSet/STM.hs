@@ -21,7 +21,7 @@ import qualified STMContainers.Set as TS
 import qualified STMContainers.Map as TM
 
 import Data.Hashable
-import Data.IxSet.OrderedSTMMap
+import Data.IxSet.STMTreeMap
 
 data TList (ixs :: [*]) where
   TNil  :: TList '[]

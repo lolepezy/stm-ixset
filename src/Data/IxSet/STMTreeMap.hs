@@ -14,7 +14,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 
-module Data.IxSet.OrderedSTMMap where
+module Data.IxSet.STMTreeMap where
 
 import Data.List (elem)
 import Data.Set (toList, fromList)
@@ -44,7 +44,7 @@ insert t k v = readTVar t >>= \case
       go tn (Node key value left right)
         | k < key  = insert left  k v
         | k > key  = insert right k v
-        | k == key = Node key value <$> empty <*> empty >>= writeTVar t
+        | k == key = writeTVar t (Node key value left right)
 
 
 get :: Key k => TTree k v -> k -> STM (Maybe v)
@@ -87,3 +87,11 @@ remove t k = readTVar t >>= \case
       where go default_ n = readTVar n >>= \case
                   Empty                -> default_
                   Node _ _ _ rightChild -> go (return n) rightChild
+
+dump :: (Show k, Show v) => TTree k v -> STM String
+dump t = readTVar t >>= \case
+    Empty                   -> return ""
+    n@(Node k v left right) -> do
+      dl <- dump left
+      dr <- dump right
+      return $ "(" ++ show k ++ " -> " ++ show v ++ " | " ++ dl ++ " | " ++ dr ++ ")"
