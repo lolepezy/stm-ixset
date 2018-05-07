@@ -40,3 +40,7 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - stm-ixset
+    - QuickCheck
+    - tasty
+    - tasty-hunit
+    - tasty-quickcheck
