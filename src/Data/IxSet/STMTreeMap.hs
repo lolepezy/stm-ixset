@@ -57,7 +57,7 @@ get m k = readTVar m >>= go
       | k == key = return $ Just value
 
 
-remove :: Key k => TTree k v -> k -> STM ()
+remove :: (Key k, Show k) => TTree k v -> k -> STM ()
 remove t k = readTVar t >>= \case
     Empty                     -> return ()
     n@(Node key _ left right) -> void (branch n)
@@ -72,11 +72,12 @@ remove t k = readTVar t >>= \case
         (Empty, Empty)  -> writeTVar tn Empty
         (left', Empty)  -> writeTVar tn left'
         (Empty, right') -> writeTVar tn right'
-        (Node { }, Node { }) -> do
-          sup <- findSucc right
-          s@(Node _ _ nl nr) <- readTVar sup
-          writeTVar tn s
-          removeNode tn nl nr
+        (lc@(Node kl _ _ _ ), rc@(Node kr _ _ _)) -> do
+          -- TODO Use findSucc/findPred randomly
+          successor        <- findSucc right
+          Node ks vs nl nr <- readTVar successor
+          writeTVar tn (Node ks vs left right)
+          removeNode successor nl nr
 
     findSucc = go empty
       where go default_ n = readTVar n >>= \case
@@ -88,10 +89,21 @@ remove t k = readTVar t >>= \case
                   Empty                -> default_
                   Node _ _ _ rightChild -> go (return n) rightChild
 
+
 dump :: (Show k, Show v) => TTree k v -> STM String
-dump t = readTVar t >>= \case
-    Empty                   -> return ""
-    n@(Node k v left right) -> do
-      dl <- dump left
-      dr <- dump right
-      return $ "(" ++ show k ++ " -> " ++ show v ++ " | " ++ dl ++ " | " ++ dr ++ ")"
+dump t = readTVar t >>= go ""
+  where
+    go indent Empty = return ""
+    go indent n@(Node k v left right) = do
+        l' <- readTVar left
+        r' <- readTVar right
+        let fl = format l' indent
+        let fr = format r' indent
+        dl <- go (indent ++ "  ") l'
+        dr <- go (indent ++ "  ") r'
+        return $ show k ++ " -> " ++ show v ++
+                fl ++ dl ++
+                fr ++ dr
+
+    format Empty _                        = " "
+    format n@(Node k v left right) indent = "\n  " ++ indent

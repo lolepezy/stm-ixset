@@ -26,4 +26,7 @@ import Data.IxSet.STMTreeMap as M
 import Tests.STMTreeMapSpec
 
 main :: IO ()
-main = defaultMain $ testGroup "All tests" [qcStmMapProps]
+main = defaultMain $ testGroup "All tests" [
+  qcStmMapProps
+  -- stmMapUnitTests
+  ]

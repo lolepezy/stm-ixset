@@ -25,9 +25,11 @@ import Control.Monad
 import Control.Monad.STM
 
 import Data.Maybe (catMaybes)
-import Data.List ((\\))
+import Data.List ((\\), nub)
 
 import Data.IxSet.STMTreeMap as M
+
+import System.IO (hPutStr, stderr, stdout)
 
 qcStmMapProps = testGroup "STM Map properties"
   [
@@ -38,6 +40,10 @@ qcStmMapProps = testGroup "STM Map properties"
     QC.testProperty
       "Get after insert returns the same element unless it's removed explicitly"
       prop_get_always_returns_inserted_element_except_for_removed_ones
+  ]
+
+stmMapUnitTests = testGroup "STM Map unit tests"
+  [
   ]
 
 prop_get_always_returns_inserted_element :: QC.Property
@@ -55,23 +61,16 @@ prop_get_always_returns_inserted_element = monadicIO $ do
 
 prop_get_always_returns_inserted_element_except_for_removed_ones :: QC.Property
 prop_get_always_returns_inserted_element_except_for_removed_ones = monadicIO $ do
-  keys :: [Int] <- pick arbitrary
+  keys :: [Int] <- nub <$> pick arbitrary
   m <- run $ atomically M.empty
   run $ forM keys $ \k ->
     atomically $ M.insert m k ("v" ++ show k)
 
-  toBeRemoved <- pick (sublistOf keys)
+  toBeRemoved <- nub <$> pick (sublistOf keys)
   run $ forM toBeRemoved $ \k ->
     atomically $ M.remove m k
 
   values <- run $ forM keys $ \k ->
     atomically $ M.get m k
 
-  run $ print $ "v1 = " ++ show values
-  run $ print $ "v2 = " ++ show (keys \\ toBeRemoved)
-  run $ print $ "v3 = " ++ show [ "v" ++ show k | k <- keys \\ toBeRemoved]
   assert $ [ "v" ++ show k | k <- keys \\ toBeRemoved] == catMaybes values
-
-
-
-printM m = run $ atomically (M.dump m) >>= print
