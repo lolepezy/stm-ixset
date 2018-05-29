@@ -92,7 +92,7 @@ getLT t k = readTVar t >>= getIt
   where
     getIt Empty = return []
     getIt (Node key v left right)
-      | key < k = ((k, v) :) <$> toList left
+      | key < k = ((key, v) :) <$> toList left
       | otherwise = return []
 
 
@@ -101,7 +101,7 @@ getGT t k = readTVar t >>= getIt
   where
     getIt Empty = return []
     getIt (Node key v left right)
-      | key < k = ((k, v) :) <$> toList right
+      | key > k = ((key, v) :) <$> toList right
       | otherwise = return []
 
 
