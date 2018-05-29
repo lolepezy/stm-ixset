@@ -25,7 +25,7 @@ import Control.Monad
 import Control.Monad.STM
 
 import Data.Maybe (catMaybes)
-import Data.List ((\\), nub)
+import Data.List ((\\), nub, sort)
 
 import Data.IxSet.STMTreeMap as M
 
@@ -51,7 +51,11 @@ qcStmMapProps = testGroup "STM Map properties"
 
     QC.testProperty
       "getGT should return keys bigger than the argument"
-      prop_getGT_returns_smaller_elements
+      prop_getGT_returns_smaller_elements,
+
+    QC.testProperty
+      "getBetween should return keys between the boundaries"
+      prop_getBetween_returns_proper_elements
   ]
 
 stmMapUnitTests = testGroup "STM Map unit tests"
@@ -115,4 +119,20 @@ lowerGreaterTest comparison extract = monadicIO $ do
   boundary <- pick (elements keys)
   upper <- run $ atomically $ extract m boundary
 
-  assert $ and [ k `comparison` boundary | (k, v) <- upper ]
+  let inRange = [ k | (k, v) <- upper, k `comparison` boundary ]
+  assert $ sort inRange == sort (map fst upper)
+
+
+prop_getBetween_returns_proper_elements :: QC.Property
+prop_getBetween_returns_proper_elements = monadicIO $ do
+  keys :: [Int] <- pick (suchThat arbitrary (not . null))
+  m <- run $ atomically M.empty
+  run $ forM keys $ \k ->
+    atomically $ M.insert m k ("v" ++ show k)
+
+  lower   <- pick (elements keys)
+  greater <- pick (elements keys)
+  result  <- run $ atomically $ M.getBetween m lower greater
+
+  let inRange = [ k | (k, v) <- result, (k > lower) && (k < greater) ]
+  assert $ sort inRange == sort (map fst result)

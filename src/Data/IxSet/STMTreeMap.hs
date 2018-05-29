@@ -110,9 +110,12 @@ getBetween t k1 k2 = readTVar t >>= getIt
   where
     getIt Empty = return []
     getIt (Node key v left right)
-      | key > k2 = return []
-      | key < k1 = return []
-      | otherwise = (++) <$> getBetween left k1 k2 <*> getBetween right k1 k2
+      | key >= k2 = return []
+      | key <= k1 = return []
+      | otherwise = do
+          l' <- getBetween left k1 k2
+          r' <- getBetween right k1 k2
+          return $ [(key, v)] ++ l' ++ r'
 
 
 toList :: TTree k v -> STM [(k, v)]
@@ -123,7 +126,6 @@ toList t = readTVar t >>= listEm
       l' <- listEm =<< readTVar left
       r' <- listEm =<< readTVar right
       return $ [(k, v)] ++ l' ++ r'
-
 
 
 size :: Key k => TTree k v -> STM Int
