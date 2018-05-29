@@ -39,7 +39,19 @@ qcStmMapProps = testGroup "STM Map properties"
 
     QC.testProperty
       "Get after insert returns the same element unless it's removed explicitly"
-      prop_get_always_returns_inserted_element_except_for_removed_ones
+      prop_get_always_returns_inserted_element_except_for_removed_ones,
+
+    QC.testProperty
+      "Size of the map is always the number of unique elements"
+      prop_size_is_always_the_number_of_unique_elements,
+
+    QC.testProperty
+      "getLT should return keys smaller than the argument"
+      prop_getLT_returns_smaller_elements,
+
+    QC.testProperty
+      "getGT should return keys bigger than the argument"
+      prop_getGT_returns_smaller_elements
   ]
 
 stmMapUnitTests = testGroup "STM Map unit tests"
@@ -74,3 +86,33 @@ prop_get_always_returns_inserted_element_except_for_removed_ones = monadicIO $ d
     atomically $ M.get m k
 
   assert $ [ "v" ++ show k | k <- keys \\ toBeRemoved] == catMaybes values
+
+
+prop_size_is_always_the_number_of_unique_elements :: QC.Property
+prop_size_is_always_the_number_of_unique_elements = monadicIO $ do
+  keys :: [Int] <- pick arbitrary
+  m <- run $ atomically M.empty
+  run $ forM keys $ \k ->
+    atomically $ M.insert m k ("v" ++ show k)
+
+  s <- run $ atomically $ M.size m
+  assert $ s == length (nub keys)
+
+
+prop_getLT_returns_smaller_elements :: QC.Property
+prop_getLT_returns_smaller_elements = lowerGreaterTest (<) M.getLT
+
+prop_getGT_returns_smaller_elements :: QC.Property
+prop_getGT_returns_smaller_elements = lowerGreaterTest (>) M.getGT
+
+lowerGreaterTest :: (Int -> Int -> Bool) -> (TTree Int String -> Int -> STM [(Int, String)]) -> QC.Property
+lowerGreaterTest comparison extract = monadicIO $ do
+  keys :: [Int] <- pick arbitrary
+  m <- run $ atomically M.empty
+  run $ forM keys $ \k ->
+    atomically $ M.insert m k ("v" ++ show k)
+
+  boundary <- pick (elements keys)
+  upper <- run $ atomically $ extract m boundary
+
+  assert $ and [ k `comparison` boundary | (k, v) <- upper ]

@@ -1,7 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -12,12 +11,11 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE TupleSections #-}
 
 module Data.IxSet.STMTreeMap where
 
 import Data.List (elem)
-import Data.Set (toList, fromList)
+import qualified Data.Set as S
 import Control.Monad
 import Control.Concurrent
 import Control.Concurrent.Async
@@ -46,18 +44,7 @@ insert t k v = readTVar t >>= \case
         | k > key  = insert right k v
         | k == key = writeTVar t (Node key value left right)
 
-
-get :: Key k => TTree k v -> k -> STM (Maybe v)
-get m k = readTVar m >>= go
-  where
-    go Empty = return Nothing
-    go (Node key value left right)
-      | k < key  = readTVar left  >>= go
-      | k > key  = readTVar right >>= go
-      | k == key = return $ Just value
-
-
-remove :: (Key k, Show k) => TTree k v -> k -> STM ()
+remove :: Key k => TTree k v -> k -> STM ()
 remove t k = readTVar t >>= \case
     Empty                     -> return ()
     n@(Node key _ left right) -> void (branch n)
@@ -90,11 +77,68 @@ remove t k = readTVar t >>= \case
                   Node _ _ _ rightChild -> go (return n) rightChild
 
 
+get :: Key k => TTree k v -> k -> STM (Maybe v)
+get t k = readTVar t >>= getIt
+  where
+    getIt Empty = return Nothing
+    getIt (Node key value left right)
+      | k < key  = readTVar left  >>= getIt
+      | k > key  = readTVar right >>= getIt
+      | k == key = return $ Just value
+
+
+getLT :: Key k => TTree k v -> k -> STM [(k, v)]
+getLT t k = readTVar t >>= getIt
+  where
+    getIt Empty = return []
+    getIt (Node key v left right)
+      | key < k = ((k, v) :) <$> toList left
+      | otherwise = return []
+
+
+getGT :: Key k => TTree k v -> k -> STM [(k, v)]
+getGT t k = readTVar t >>= getIt
+  where
+    getIt Empty = return []
+    getIt (Node key v left right)
+      | key < k = ((k, v) :) <$> toList right
+      | otherwise = return []
+
+
+getBetween :: Key k => TTree k v -> k -> k -> STM [(k, v)]
+getBetween t k1 k2 = readTVar t >>= getIt
+  where
+    getIt Empty = return []
+    getIt (Node key v left right)
+      | key > k2 = return []
+      | key < k1 = return []
+      | otherwise = (++) <$> getBetween left k1 k2 <*> getBetween right k1 k2
+
+
+toList :: TTree k v -> STM [(k, v)]
+toList t = readTVar t >>= listEm
+  where
+    listEm Empty = return []
+    listEm (Node k v left right) = do
+      l' <- listEm =<< readTVar left
+      r' <- listEm =<< readTVar right
+      return $ [(k, v)] ++ l' ++ r'
+
+
+
+size :: Key k => TTree k v -> STM Int
+size t = readTVar t >>= \case
+  Empty               -> return 0
+  Node k v left right -> do
+    sl <- size left
+    sr <- size right
+    return $ sl + sr + 1
+
 dump :: (Show k, Show v) => TTree k v -> STM String
 dump t = readTVar t >>= go ""
   where
     go indent Empty = return ""
-    go indent n@(Node k v left right) = do
+    go indent (Node k v left right) = do
         l' <- readTVar left
         r' <- readTVar right
         let fl = format l' indent

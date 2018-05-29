@@ -13,20 +13,23 @@
 
 module Data.IxSet.STM
     (
+    insert
     ) where
 
 import Data.Data
+
+import Control.Concurrent.STM
+import Control.Concurrent.STM.TVar
 
 import qualified STMContainers.Set as TS
 import qualified STMContainers.Map as TM
 
 import Data.Hashable
-import Data.IxSet.STMTreeMap
+import qualified Data.IxSet.STMTreeMap as Index
 
 data TList (ixs :: [*]) where
   TNil  :: TList '[]
   (:-:) :: ix -> TList ixs -> TList (ix ': ixs)
-
 
 infixr 5 :-:
 
@@ -44,8 +47,19 @@ data IxSet (ixs :: [*]) (v :: *) where
   IdxSet :: !(TS.Set v) -> !(TList ixs) -> IxSet ixs v
 
 data Idx v ix where
-  IdxFun :: (Eq ix, Ord ix) => (v -> ix) -> !(TTree ix v) -> Idx v ix
+  IdxFun :: (Eq ix, Ord ix) => (v -> ix) -> !(Index.TTree ix v) -> Idx v ix
 
 
 proxyTail :: Proxy (z ': zs) -> Proxy zs
 proxyTail _ = Proxy
+
+
+{-
+  TODO Implement them
+-}
+
+insert :: IxSet ixs v -> v -> STM ()
+insert _ _ = return ()
+
+remove :: IxSet ixs v -> v -> STM ()
+remove _ _ = return ()
