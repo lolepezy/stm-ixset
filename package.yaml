@@ -26,6 +26,7 @@ dependencies:
 - hashable
 - stm
 - stm-containers
+- list-t
 
 library:
   source-dirs: src
@@ -44,3 +45,16 @@ tests:
     - tasty
     - tasty-hunit
     - tasty-quickcheck
+
+benchmarks:
+  stm-ix-benchmarks:
+    dependencies:
+    - base
+    - stm-ixset
+    - criterion
+    ghc-options:
+    - -rtsopts
+    - -threaded
+    - -with-rtsopts=-N
+    main:               Bench.hs
+    source-dirs:        benchmark
