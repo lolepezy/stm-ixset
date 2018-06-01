@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE KindSignatures #-}
@@ -13,7 +14,8 @@
 
 module Data.IxSet.STM
     (
-    insert
+    insert,
+    remove
     ) where
 
 import Data.Data
@@ -24,30 +26,33 @@ import Control.Concurrent.STM.TVar
 import qualified STMContainers.Set as TS
 import qualified STMContainers.Map as TM
 
-import Data.Hashable
+import qualified ListT as LT
+
 import qualified Data.IxSet.STMTreeMap as Index
 
-data TList (ixs :: [*]) where
-  TNil  :: TList '[]
-  (:-:) :: ix -> TList ixs -> TList (ix ': ixs)
+data TList (ixs :: [*]) (f :: * -> *) where
+  TNil  :: TList '[] f
+  (:-:) :: f ix -> TList ixs f -> TList (ix ': ixs) f
 
 infixr 5 :-:
 
-class TListLookup ixs ix where
-  tlistLookup :: Proxy ixs -> Proxy ix -> TList ixs -> ix
+class Lookup ixs ix where
+  tlistLookup :: Proxy ixs -> Proxy ix -> TList ixs f -> f ix
 
-instance TListLookup (ix ': ixs) ix where
+instance Lookup (ix ': ixs) ix where
   tlistLookup _ _ (iv :-: _) = iv
 
-instance {-# OVERLAPS #-} TListLookup ixs ix => TListLookup (ix1 ': ixs) ix where
+instance {-# OVERLAPS #-} Lookup ixs ix => Lookup (ix1 ': ixs) ix where
   tlistLookup pList pI (i :-: ix) = tlistLookup (proxyTail pList) pI ix
 
 
 data IxSet (ixs :: [*]) (v :: *) where
-  IdxSet :: !(TS.Set v) -> !(TList ixs) -> IxSet ixs v
+  Empty  :: !(TS.Set v)                         -> IxSet ixs v
+  IdxSet :: !(TS.Set v) -> !(TList ixs (Idx v)) -> IxSet ixs v
 
 data Idx v ix where
-  IdxFun :: (Eq ix, Ord ix) => (v -> ix) -> !(Index.TTree ix v) -> Idx v ix
+  Hole   :: (Eq ix)      => Idx v ix
+  IdxFun :: Index.Key ix => (v -> ix) -> !(Index.TTree ix (TS.Set v)) -> Idx v ix
 
 
 proxyTail :: Proxy (z ': zs) -> Proxy zs
@@ -59,7 +64,37 @@ proxyTail _ = Proxy
 -}
 
 insert :: IxSet ixs v -> v -> STM ()
-insert _ _ = return ()
+insert _ _ = do
+  
+  return ()
 
 remove :: IxSet ixs v -> v -> STM ()
 remove _ _ = return ()
+
+get :: (Index.Key i, Lookup ixs i) => IxSet ixs v -> i -> STM [v]
+get set i =
+    case getIdx set i of
+      -- TODO make it compile time decision (through an auxilliary typeclass maybe)
+      Hole       -> return []
+      IdxFun _ t -> Index.get t i >>= \case
+          Nothing     -> return []
+          Just values -> LT.toList $ TS.stream values
+
+
+getIdx :: (Index.Key i, Lookup ixs i) => IxSet ixs v -> i -> Idx v i
+getIdx (Empty _) _          = Hole
+getIdx (IdxSet _ indexes) i = tlistLookup Proxy (Proxy :: Proxy i) indexes
+
+
+
+class UpdateIxds ixs v a where
+  updateIdxs :: Proxy ixs -> v -> TList ixs (Idx v) -> STM a -> STM ()
+
+instance UpdateIxds '[] v a where
+  updateIdxs _ _ _ _ = return ()
+
+instance {-# OVERLAPS #-} UpdateIxds ixs v a =>
+                          UpdateIxds (i ': ixs) v a where
+  updateIdxs proxies v (i :-: ix) action = do
+    action
+    updateIdxs (proxyTail proxies) v ix action
