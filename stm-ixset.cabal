@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 553f6450f9c6a4e25e257a0606a0617f92bb362ace1e45b4007050a0a981a20e
+-- hash: cdffc704b4a1c854bd0b3f887d50edf815ea32772f5d9128e960aa7ded51336c
 
 name:           stm-ixset
 version:        0.1.0.0
@@ -33,6 +33,7 @@ library
     , base >=4.7 && <5
     , containers
     , hashable
+    , list-t
     , stm
     , stm-containers
   exposed-modules:
@@ -54,6 +55,7 @@ test-suite stm-ixset-test
     , base >=4.7 && <5
     , containers
     , hashable
+    , list-t
     , stm
     , stm-containers
     , stm-ixset
@@ -62,5 +64,26 @@ test-suite stm-ixset-test
     , tasty-quickcheck
   other-modules:
       Tests.STMTreeMapSpec
+      Paths_stm_ixset
+  default-language: Haskell2010
+
+benchmark stm-ix-benchmarks
+  type: exitcode-stdio-1.0
+  main-is: Bench.hs
+  hs-source-dirs:
+      benchmark
+  ghc-options: -rtsopts -threaded -with-rtsopts=-N
+  build-depends:
+      async
+    , base
+    , containers
+    , criterion
+    , hashable
+    , list-t
+    , stm
+    , stm-containers
+    , stm-ixset
+  other-modules:
+      Bench.STMTreeMapBench
       Paths_stm_ixset
   default-language: Haskell2010
