@@ -19,6 +19,7 @@ module Data.IxSet.STM
     ) where
 
 import Data.Data
+import Data.Foldable
 
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TVar
@@ -66,22 +67,28 @@ insert :: (Eq v, Hashable v) =>
           IxSet ixs v -> v -> STM ()
 insert (IdxSet _ indexes) v =
   traverseIdx v indexes $ \v i ->
-        case i of
-          Hole       -> return ()
-          IdxFun f t -> do
-            let k  = f v
-            v' <- Index.get t k
-            case v' of
-              Nothing -> do
-                s <- TS.new
-                TS.insert v s
-                Index.insert t k s
-              Just s  -> TS.insert v s
+      case i of
+        Hole       -> return ()
+        IdxFun f t -> do
+          let k  = f v
+          v' <- Index.get t k
+          case v' of
+            Nothing -> do
+              s <- TS.new
+              TS.insert v s
+              Index.insert t k s
+            Just s  -> TS.insert v s
 
 remove :: (Eq v, Hashable v) =>
           TraverseIdxs ixs v =>
           IxSet ixs v -> v -> STM ()
-remove _ _ = return ()
+remove (IdxSet _ indexes) v =
+  traverseIdx v indexes $ \v i ->
+      case i of
+        Hole       -> return ()
+        IdxFun f t -> do
+          s <- Index.get t (f v)
+          forM_ s (TS.delete v)
 
 get :: (Index.Key i, TLookup ixs i) => IxSet ixs v -> i -> STM [v]
 get set i =
