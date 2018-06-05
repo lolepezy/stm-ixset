@@ -136,6 +136,12 @@ size t = readTVar t >>= \case
     sr <- size right
     return $ sl + sr + 1
 
+
+isEmpty :: Key k => TTree k v -> STM Bool
+isEmpty t = readTVar t >>= \case
+  Empty -> return True
+  _     -> return False
+
 dump :: (Show k, Show v) => TTree k v -> STM String
 dump t = readTVar t >>= go ""
   where
