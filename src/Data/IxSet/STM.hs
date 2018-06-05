@@ -65,7 +65,8 @@ proxyTail _ = Proxy
 insert :: (Eq v, Hashable v) =>
           TraverseIdxs ixs v =>
           IxSet ixs v -> v -> STM ()
-insert (IdxSet _ indexes) v =
+insert (IdxSet set indexes) v = do
+  TS.insert v set
   traverseIdx v indexes $ \v i ->
       case i of
         Hole       -> return ()
@@ -79,10 +80,12 @@ insert (IdxSet _ indexes) v =
               Index.insert t k s
             Just s  -> TS.insert v s
 
+
 remove :: (Eq v, Hashable v) =>
           TraverseIdxs ixs v =>
           IxSet ixs v -> v -> STM ()
-remove (IdxSet _ indexes) v =
+remove (IdxSet set indexes) v = do
+  TS.delete v set
   traverseIdx v indexes $ \v i ->
       case i of
         Hole       -> return ()
@@ -90,7 +93,9 @@ remove (IdxSet _ indexes) v =
           s <- Index.get t (f v)
           forM_ s (TS.delete v)
 
-get :: (Index.Key i, TLookup ixs i) => IxSet ixs v -> i -> STM [v]
+
+get :: (Index.Key i, TLookup ixs i) =>
+       IxSet ixs v -> i -> STM [v]
 get set i =
     case getIdx set i of
       -- TODO make it compile time decision (through an auxilliary typeclass maybe)
