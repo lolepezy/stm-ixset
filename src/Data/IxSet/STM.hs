@@ -28,22 +28,24 @@ import qualified STMContainers.Map as TM
 
 import qualified ListT as LT
 
+import Data.Hashable
+
 import qualified Data.IxSet.STMTreeMap as Index
 
 data TList (ixs :: [*]) (f :: * -> *) where
   TNil  :: TList '[] f
-  (:-:) :: f ix -> TList ixs f -> TList (ix ': ixs) f
+  (:-:) :: f i -> TList ixs f -> TList (i ': ixs) f
 
 infixr 5 :-:
 
-class Lookup ixs ix where
-  tlistLookup :: Proxy ixs -> Proxy ix -> TList ixs f -> f ix
+class TLookup ixs i where
+  tlookup :: Proxy i -> TList ixs f -> f i
 
-instance Lookup (ix ': ixs) ix where
-  tlistLookup _ _ (iv :-: _) = iv
+instance TLookup (i ': ixs) i where
+  tlookup _ (iv :-: _) = iv
 
-instance {-# OVERLAPS #-} Lookup ixs ix => Lookup (ix1 ': ixs) ix where
-  tlistLookup pList pI (i :-: ix) = tlistLookup (proxyTail pList) pI ix
+instance {-# OVERLAPS #-} TLookup ixs i => TLookup (i1 ': ixs) i where
+  tlookup i' (i :-: ix) = tlookup i' ix
 
 
 data IxSet (ixs :: [*]) (v :: *) where
@@ -59,19 +61,29 @@ proxyTail :: Proxy (z ': zs) -> Proxy zs
 proxyTail _ = Proxy
 
 
-{-
-  TODO Implement them
--}
+insert :: (Eq v, Hashable v) =>
+          TraverseIdxs ixs v =>
+          IxSet ixs v -> v -> STM ()
+insert (IdxSet _ indexes) v =
+  traverseIdx v indexes $ \v i ->
+        case i of
+          Hole       -> return ()
+          IdxFun f t -> do
+            let k  = f v
+            v' <- Index.get t k
+            case v' of
+              Nothing -> do
+                s <- TS.new
+                TS.insert v s
+                Index.insert t k s
+              Just s  -> TS.insert v s
 
-insert :: IxSet ixs v -> v -> STM ()
-insert _ _ = do
-  
-  return ()
-
-remove :: IxSet ixs v -> v -> STM ()
+remove :: (Eq v, Hashable v) =>
+          TraverseIdxs ixs v =>
+          IxSet ixs v -> v -> STM ()
 remove _ _ = return ()
 
-get :: (Index.Key i, Lookup ixs i) => IxSet ixs v -> i -> STM [v]
+get :: (Index.Key i, TLookup ixs i) => IxSet ixs v -> i -> STM [v]
 get set i =
     case getIdx set i of
       -- TODO make it compile time decision (through an auxilliary typeclass maybe)
@@ -81,20 +93,19 @@ get set i =
           Just values -> LT.toList $ TS.stream values
 
 
-getIdx :: (Index.Key i, Lookup ixs i) => IxSet ixs v -> i -> Idx v i
+getIdx :: (Index.Key i, TLookup ixs i) => IxSet ixs v -> i -> Idx v i
 getIdx (Empty _) _          = Hole
-getIdx (IdxSet _ indexes) i = tlistLookup Proxy (Proxy :: Proxy i) indexes
+getIdx (IdxSet _ indexes) i = tlookup (Proxy :: Proxy i) indexes
 
 
+type IdxF v = forall i . v -> Idx v i -> STM ()
 
-class UpdateIxds ixs v a where
-  updateIdxs :: Proxy ixs -> v -> TList ixs (Idx v) -> STM a -> STM ()
+class TraverseIdxs ixs v where
+  traverseIdx :: v -> TList ixs (Idx v) -> IdxF v -> STM ()
 
-instance UpdateIxds '[] v a where
-  updateIdxs _ _ _ _ = return ()
+instance TraverseIdxs '[] v where
+  traverseIdx _ _ _ = return ()
 
-instance {-# OVERLAPS #-} UpdateIxds ixs v a =>
-                          UpdateIxds (i ': ixs) v a where
-  updateIdxs proxies v (i :-: ix) action = do
-    action
-    updateIdxs (proxyTail proxies) v ix action
+instance {-# OVERLAPS #-} (Eq v, Hashable v, TraverseIdxs ixs v) =>
+                          TraverseIdxs (i ': ixs) v where
+  traverseIdx v (i :-: ixs) f = f v i >> traverseIdx v ixs f
