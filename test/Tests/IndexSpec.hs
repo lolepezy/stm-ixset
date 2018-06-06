@@ -14,7 +14,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 
-module Tests.STMTreeMapSpec where
+module Tests.IndexSpec where
 
 import Test.Tasty
 import Test.Tasty.QuickCheck as QC
@@ -27,11 +27,11 @@ import Control.Monad.STM
 import Data.Maybe (catMaybes)
 import Data.List ((\\), nub, sort)
 
-import Data.IxSet.STMTreeMap as M
+import Data.IxSet.Index as M
 
 import System.IO (hPutStr, stderr, stdout)
 
-qcStmMapProps = testGroup "STM Map properties"
+qcStmMapProps = testGroup "STM Index Map properties"
   [
     QC.testProperty
       "Get after insert returns the same element"

@@ -12,7 +12,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE LambdaCase #-}
 
-module Data.IxSet.STMTreeMap where
+module Data.IxSet.Index where
 
 import Data.List (elem)
 import qualified Data.Set as S

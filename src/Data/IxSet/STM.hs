@@ -15,7 +15,8 @@
 module Data.IxSet.STM
     (
     insert,
-    remove
+    remove,
+    get
     ) where
 
 import Data.Data
@@ -31,7 +32,7 @@ import qualified ListT as LT
 
 import Data.Hashable
 
-import qualified Data.IxSet.STMTreeMap as Index
+import qualified Data.IxSet.Index as Index
 
 data TList (ixs :: [*]) (f :: * -> *) where
   TNil  :: TList '[] f
@@ -68,17 +69,16 @@ insert :: (Eq v, Hashable v) =>
 insert (IdxSet set indexes) v = do
   TS.insert v set
   traverseIdx v indexes $ \v i ->
-      case i of
-        Hole       -> return ()
-        IdxFun f t -> do
-          let k  = f v
-          v' <- Index.get t k
-          case v' of
-            Nothing -> do
-              s <- TS.new
-              TS.insert v s
-              Index.insert t k s
-            Just s  -> TS.insert v s
+    case i of
+      Hole       -> return ()
+      IdxFun f t -> do
+        let k  = f v
+        Index.get t k >>= \case
+          Nothing -> do
+            s <- TS.new
+            TS.insert v s
+            Index.insert t k s
+          Just s  -> TS.insert v s
 
 
 remove :: (Eq v, Hashable v) =>
@@ -87,22 +87,22 @@ remove :: (Eq v, Hashable v) =>
 remove (IdxSet set indexes) v = do
   TS.delete v set
   traverseIdx v indexes $ \v i ->
-      case i of
-        Hole       -> return ()
-        IdxFun f t -> do
-          s <- Index.get t (f v)
-          forM_ s (TS.delete v)
+    case i of
+      Hole       -> return ()
+      IdxFun f t -> do
+        s <- Index.get t (f v)
+        forM_ s (TS.delete v)
 
 
 get :: (Index.Key i, TLookup ixs i) =>
        IxSet ixs v -> i -> STM [v]
 get set i =
-    case getIdx set i of
-      -- TODO make it compile time decision (through an auxilliary typeclass maybe)
-      Hole       -> return []
-      IdxFun _ t -> Index.get t i >>= \case
-          Nothing     -> return []
-          Just values -> LT.toList $ TS.stream values
+  case getIdx set i of
+    -- TODO make it compile time decision (through an auxilliary typeclass maybe)
+    Hole       -> return []
+    IdxFun _ t -> Index.get t i >>= \case
+        Nothing     -> return []
+        Just values -> LT.toList $ TS.stream values
 
 
 getIdx :: (Index.Key i, TLookup ixs i) => IxSet ixs v -> i -> Idx v i
