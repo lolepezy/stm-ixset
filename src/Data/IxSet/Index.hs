@@ -31,12 +31,12 @@ data Tree k v = Empty | Node !k !v !(TTree k v) !(TTree k v)
   deriving (Eq)
 
 
-empty :: STM (TTree k v)
-empty = newTVar Empty
+new :: STM (TTree k v)
+new = newTVar Empty
 
 insert :: Key k => TTree k v -> k -> v -> STM ()
 insert t k v = readTVar t >>= \case
-      Empty -> Node k v <$> empty <*> empty >>= writeTVar t
+      Empty -> Node k v <$> new <*> new >>= writeTVar t
       n     -> go t n
     where
       go tn (Node key value left right)
@@ -66,12 +66,12 @@ remove t k = readTVar t >>= \case
           writeTVar tn (Node ks vs left right)
           removeNode successor nl nr
 
-    findSucc = go empty
+    findSucc = go new
       where go default_ n = readTVar n >>= \case
                   Empty                -> default_
                   Node _ _ leftChild _ -> go (return n) leftChild
 
-    findPred = go empty
+    findPred = go new
       where go default_ n = readTVar n >>= \case
                   Empty                -> default_
                   Node _ _ _ rightChild -> go (return n) rightChild

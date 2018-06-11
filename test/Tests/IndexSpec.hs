@@ -1,7 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -11,8 +10,6 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE TupleSections #-}
 
 module Tests.IndexSpec where
 
@@ -65,7 +62,7 @@ stmMapUnitTests = testGroup "STM Map unit tests"
 prop_get_always_returns_inserted_element :: QC.Property
 prop_get_always_returns_inserted_element = monadicIO $ do
   keys :: [Int] <- pick arbitrary
-  m <- run $ atomically M.empty
+  m <- run $ atomically M.new
   run $ forM keys $ \k ->
     atomically $ M.insert m k ("v" ++ show k)
 
@@ -78,7 +75,7 @@ prop_get_always_returns_inserted_element = monadicIO $ do
 prop_get_always_returns_inserted_element_except_for_removed_ones :: QC.Property
 prop_get_always_returns_inserted_element_except_for_removed_ones = monadicIO $ do
   keys :: [Int] <- nub <$> pick arbitrary
-  m <- run $ atomically M.empty
+  m <- run $ atomically M.new
   run $ forM keys $ \k ->
     atomically $ M.insert m k ("v" ++ show k)
 
@@ -95,7 +92,7 @@ prop_get_always_returns_inserted_element_except_for_removed_ones = monadicIO $ d
 prop_size_is_always_the_number_of_unique_elements :: QC.Property
 prop_size_is_always_the_number_of_unique_elements = monadicIO $ do
   keys :: [Int] <- pick arbitrary
-  m <- run $ atomically M.empty
+  m <- run $ atomically M.new
   run $ forM keys $ \k ->
     atomically $ M.insert m k ("v" ++ show k)
 
@@ -112,7 +109,7 @@ prop_getGT_returns_smaller_elements = lowerGreaterTest (>) M.getGT
 lowerGreaterTest :: (Int -> Int -> Bool) -> (TTree Int String -> Int -> STM [(Int, String)]) -> QC.Property
 lowerGreaterTest comparison extract = monadicIO $ do
   keys :: [Int] <- pick arbitrary
-  m <- run $ atomically M.empty
+  m <- run $ atomically M.new
   run $ forM keys $ \k ->
     atomically $ M.insert m k ("v" ++ show k)
 
@@ -126,7 +123,7 @@ lowerGreaterTest comparison extract = monadicIO $ do
 prop_getBetween_returns_proper_elements :: QC.Property
 prop_getBetween_returns_proper_elements = monadicIO $ do
   keys :: [Int] <- pick (suchThat arbitrary (not . null))
-  m <- run $ atomically M.empty
+  m <- run $ atomically M.new
   run $ forM keys $ \k ->
     atomically $ M.insert m k ("v" ++ show k)
 

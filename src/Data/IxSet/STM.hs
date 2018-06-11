@@ -11,13 +11,21 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ConstraintKinds #-}
 
 module Data.IxSet.STM
     (
     insert,
     remove,
-    get
+    get,
+    new,
+    idxFun,
+    TList(..),
+    IxSet(..),
+    Idx(..)
     ) where
+
+import GHC.Exts (Constraint)
 
 import Data.Data
 import Data.Foldable
@@ -33,6 +41,10 @@ import qualified ListT as LT
 import Data.Hashable
 
 import qualified Data.IxSet.Index as Index
+
+type family All (c :: * -> Constraint) (xs :: [*]) :: Constraint
+type instance All c '[]       = ()
+type instance All c (x ': xs) = (c x, All c xs)
 
 data TList (ixs :: [*]) (f :: * -> *) where
   TNil  :: TList '[] f
@@ -51,17 +63,24 @@ instance {-# OVERLAPS #-} TLookup ixs i => TLookup (i1 ': ixs) i where
 
 
 data IxSet (ixs :: [*]) (v :: *) where
-  Empty  :: !(TS.Set v)                         -> IxSet ixs v
+  Flat   :: !(TS.Set v)                         -> IxSet ixs v
   IdxSet :: !(TS.Set v) -> !(TList ixs (Idx v)) -> IxSet ixs v
 
 data Idx v ix where
   Hole   :: (Eq ix)      => Idx v ix
   IdxFun :: Index.Key ix => (v -> ix) -> !(Index.TTree ix (TS.Set v)) -> Idx v ix
 
+type AllKeys ixs = (All Eq  ixs, All Ord ixs)
 
-proxyTail :: Proxy (z ': zs) -> Proxy zs
-proxyTail _ = Proxy
+new :: AllKeys ixs =>
+       (Eq v, Hashable v) =>
+       TList (ixs :: [*]) (Idx v) -> STM (IxSet (ixs :: [*]) v)
+new indexes = do
+  s <- TS.new
+  return $ IdxSet s indexes
 
+idxFun :: Index.Key ix => (v -> ix) -> STM (Idx v ix)
+idxFun f = IdxFun f <$> Index.new
 
 insert :: (Eq v, Hashable v) =>
           TraverseIdxs ixs v =>
@@ -98,15 +117,13 @@ get :: (Index.Key i, TLookup ixs i) =>
        IxSet ixs v -> i -> STM [v]
 get set i =
   case getIdx set i of
-    -- TODO make it compile time decision (through an auxilliary typeclass maybe)
-    Hole       -> return []
     IdxFun _ t -> Index.get t i >>= \case
         Nothing     -> return []
         Just values -> LT.toList $ TS.stream values
 
 
 getIdx :: (Index.Key i, TLookup ixs i) => IxSet ixs v -> i -> Idx v i
-getIdx (Empty _) _          = Hole
+getIdx (Flat _) _           = Hole
 getIdx (IdxSet _ indexes) i = tlookup (Proxy :: Proxy i) indexes
 
 
