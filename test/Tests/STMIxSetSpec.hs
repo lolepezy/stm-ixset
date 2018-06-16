@@ -36,7 +36,11 @@ qcStmIxsProps = testGroup "STM IxSet properties"
   [
     QC.testProperty
       "Get after insert returns the same elements"
-      prop_get_always_returns_inserted_elements
+      prop_get_always_returns_inserted_elements,
+
+    QC.testProperty
+      "Get after insert returns the same elements except for removed ones"
+      prop_get_always_returns_inserted_elements_except_for_removed_ones
   ]
 
 
@@ -74,12 +78,36 @@ prop_get_always_returns_inserted_elements = monadicIO $ do
   ixSet <- run $ atomically mkIdxSet
   entries :: [Entry] <- pick arbitrary
   run $ atomically $ forM_ entries $ Ixs.insert ixSet
-  
+
   compareExtractedSets ixSet entries field1
   compareExtractedSets ixSet entries field2
   compareExtractedSets ixSet entries field3
   where
     compareExtractedSets ixSet entries fieldF = do
-      i1Subset <- nub <$> pick (sublistOf entries)
-      i1Extracted <- run $ atomically $ forM i1Subset $ \e -> Ixs.get ixSet (fieldF e)
-      assert $ all (True==) [ all (\e -> fieldF e0 == fieldF e) extr | (e0, extr) <- zip i1Subset i1Extracted ]
+      subset <- nub <$> pick (sublistOf entries)
+      extracted <- run $ atomically $ forM subset $ \e -> Ixs.get ixSet (fieldF e)
+      assert $ all (True==) [ all (\e -> fieldF e0 == fieldF e) extr | (e0, extr) <- zip subset extracted ]
+
+
+prop_get_always_returns_inserted_elements_except_for_removed_ones :: QC.Property
+prop_get_always_returns_inserted_elements_except_for_removed_ones = monadicIO $ do
+  ixSet <- run $ atomically mkIdxSet
+  entries :: [Entry] <- pick arbitrary
+  run $ atomically $ forM_ entries $ Ixs.insert ixSet
+
+  toBeRemoved <- nub <$> pick (sublistOf entries)
+  run $ atomically $ forM_ toBeRemoved $ Ixs.remove ixSet
+
+
+  compareExtractedSets ixSet entries toBeRemoved field1
+  compareExtractedSets ixSet entries toBeRemoved field2
+  compareExtractedSets ixSet entries toBeRemoved field3
+  where
+    compareExtractedSets ixSet entries removed fieldF = do
+      subset <- nub <$> pick (sublistOf entries)
+      let leftovers = subset \\ removed
+      extracted <- run $ atomically $ forM leftovers $ \e -> Ixs.get ixSet (fieldF e)
+      assert $ all (True==) [ all (\e -> fieldF e0 == fieldF e) extr | (e0, extr) <- zip leftovers extracted ]
+
+      extracted <- run $ atomically $ forM subset $ \e -> Ixs.get ixSet (fieldF e)      
+      assert $ null [ es | es <- extracted, any (`elem` removed) es ]
