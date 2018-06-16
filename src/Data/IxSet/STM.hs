@@ -30,6 +30,8 @@ import GHC.Exts (Constraint)
 import Data.Data
 import Data.Foldable
 
+import Control.Monad (when)
+
 import Control.Concurrent.STM
 import Control.Concurrent.STM.TVar
 
@@ -109,8 +111,12 @@ remove (IdxSet set indexes) v = do
     case i of
       Hole       -> return ()
       IdxFun f t -> do
-        s <- Index.get t (f v)
-        forM_ s (TS.delete v)
+        let k = f v
+        s <- Index.get t k
+        forM_ s $ \s' -> do
+          TS.delete v s'
+          empty <- TS.null s'
+          when empty $ Index.remove t k
 
 
 get :: (Index.Key i, TLookup ixs i) =>
