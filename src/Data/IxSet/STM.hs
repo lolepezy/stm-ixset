@@ -5,6 +5,7 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PolyKinds #-}
@@ -20,7 +21,7 @@ module Data.IxSet.STM
     get,
     new,
     idxFun,
-    TList(..),
+    ixList,
     IxSet(..),
     Idx(..)
     ) where
@@ -73,6 +74,18 @@ data Idx v ix where
   IdxFun :: Index.Key ix => (v -> ix) -> !(Index.TTree ix (TS.Set v)) -> Idx v ix
 
 type AllKeys ixs = (All Eq  ixs, All Ord ixs)
+
+ixList :: MkIxList ixs ixs a r => r
+ixList = ixList' id
+
+class MkIxList ixs ixs' v r | r -> v ixs ixs' where
+  ixList' :: (TList ixs (Idx v) -> TList ixs' (Idx v)) -> r
+
+instance MkIxList '[] ixs v (TList ixs (Idx v)) where
+  ixList' acc = acc TNil
+
+instance MkIxList ixs ixs' v r => MkIxList (ix ': ixs) ixs' v (Idx v ix -> r) where
+  ixList' acc ix = ixList' (\ x -> acc (ix :-: x))
 
 new :: AllKeys ixs =>
        (Eq v, Hashable v) =>

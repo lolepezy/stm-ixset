@@ -27,7 +27,7 @@ import Data.Maybe (catMaybes)
 import Data.List ((\\), nub, sort)
 
 import Data.IxSet.Index as Idx
-import Data.IxSet.STM (TList(..), idxFun)
+import Data.IxSet.STM (idxFun, ixList)
 import qualified Data.IxSet.STM as Ixs
 
 import GHC.Generics (Generic)
@@ -70,15 +70,17 @@ mkIdxSet = do
   i1 <- idxFun field1
   i2 <- idxFun field2
   i3 <- idxFun field3
-  Ixs.new $ i1 :-: i2 :-: i3 :-: TNil
+  Ixs.new $ ixList i1 i2 i3
 
-
-prop_get_always_returns_inserted_elements :: QC.Property
-prop_get_always_returns_inserted_elements = monadicIO $ do
+arbitraryIxSet = do
   ixSet <- run $ atomically mkIdxSet
   entries :: [Entry] <- pick arbitrary
   run $ atomically $ forM_ entries $ Ixs.insert ixSet
+  return (ixSet, entries)
 
+prop_get_always_returns_inserted_elements :: QC.Property
+prop_get_always_returns_inserted_elements = monadicIO $ do
+  (ixSet, entries) <- arbitraryIxSet
   compareExtractedSets ixSet entries field1
   compareExtractedSets ixSet entries field2
   compareExtractedSets ixSet entries field3
@@ -91,13 +93,10 @@ prop_get_always_returns_inserted_elements = monadicIO $ do
 
 prop_get_always_returns_inserted_elements_except_for_removed_ones :: QC.Property
 prop_get_always_returns_inserted_elements_except_for_removed_ones = monadicIO $ do
-  ixSet <- run $ atomically mkIdxSet
-  entries :: [Entry] <- pick arbitrary
-  run $ atomically $ forM_ entries $ Ixs.insert ixSet
+  (ixSet, entries) <- arbitraryIxSet
 
   toBeRemoved <- nub <$> pick (sublistOf entries)
   run $ atomically $ forM_ toBeRemoved $ Ixs.remove ixSet
-
 
   compareExtractedSets ixSet entries toBeRemoved field1
   compareExtractedSets ixSet entries toBeRemoved field2
@@ -109,5 +108,5 @@ prop_get_always_returns_inserted_elements_except_for_removed_ones = monadicIO $ 
       extracted <- run $ atomically $ forM leftovers $ \e -> Ixs.get ixSet (fieldF e)
       assert $ all (True==) [ all (\e -> fieldF e0 == fieldF e) extr | (e0, extr) <- zip leftovers extracted ]
 
-      extracted <- run $ atomically $ forM subset $ \e -> Ixs.get ixSet (fieldF e)      
+      extracted <- run $ atomically $ forM subset $ \e -> Ixs.get ixSet (fieldF e)
       assert $ null [ es | es <- extracted, any (`elem` removed) es ]
