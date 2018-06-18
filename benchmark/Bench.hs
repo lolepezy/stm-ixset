@@ -13,5 +13,7 @@
 
 import Criterion.Main
 
+import qualified Bench.STMTreeMapBench as IxBench
+
 main :: IO ()
-main = defaultMain [bench "const" (whnf const ())]
+main = IxBench.indexBench

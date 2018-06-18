@@ -11,7 +11,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RankNTypes #-}
 
-module Tests.STMTreeMapBench where
+module Bench.STMTreeMapBench where
 
 import Control.Monad
 import Control.Monad.STM
@@ -19,18 +19,37 @@ import Control.Monad.STM
 import Data.Maybe (catMaybes)
 import Data.List ((\\), nub, sort)
 
-import Data.IxSet.STMTreeMap as M
-
 import Criterion.Main
 import Criterion.Monad
 import Criterion.IO
 
-main :: IO ()
-main = defaultMain [
-  bgroup "stm-map" [
-       bench "1"  $ whnf fib 1
-     , bench "5"  $ whnf fib 5
-     , bench "9"  $ whnf fib 9
-     , bench "11" $ whnf fib 11
-     ]
-  ]
+import qualified Data.Map as M
+import qualified System.Random.MWC.Monad as MWC
+import qualified Data.Text as Text
+import qualified Data.Char as Char
+
+import Data.IxSet.Index as Ix
+
+fib x = x
+
+rows :: Int = 100000
+
+indexBench :: IO ()
+indexBench = do
+  keys <- MWC.runWithCreate $ replicateM rows keyGenerator
+  defaultMain [
+    bgroup "stm-map" [
+        bench "simple insert" $ nfIO $ do
+           t <- atomically Ix.new
+           forM_ keys $ \k -> atomically $ Ix.insert t k ()
+       ]
+    ]
+
+keyGenerator :: MWC.Rand IO Text.Text
+keyGenerator = do
+  l <- length
+  s <- replicateM l char
+  return $! Text.pack s
+  where
+    length = MWC.uniformR (7, 20)
+    char = Char.chr <$> MWC.uniformR (Char.ord 'a', Char.ord 'z')
