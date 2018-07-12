@@ -15,6 +15,8 @@ module Bench.STMTreeMapBench where
 
 import Control.Monad
 import Control.Monad.STM
+import Control.Concurrent.STM.TVar
+import Control.Concurrent.Async
 
 import Data.Maybe (catMaybes)
 import Data.List ((\\), nub, sort)
@@ -23,33 +25,54 @@ import Criterion.Main
 import Criterion.Monad
 import Criterion.IO
 
-import qualified Data.Map as M
+import qualified Data.Map.Strict as M
 import qualified System.Random.MWC.Monad as MWC
 import qualified Data.Text as Text
 import qualified Data.Char as Char
 
+import qualified Data.List.Split as S
+
+import qualified Control.Concurrent.STM.Stats as Stat
+
 import Data.IxSet.Index as Ix
 
-fib x = x
-
 rows :: Int = 100000
+chunkSize :: Int = 10000
 
 indexBench :: IO ()
 indexBench = do
-  keys <- MWC.runWithCreate $ replicateM rows keyGenerator
+  keys <- MWC.runWithCreate $ replicateM rows intKeyGenerator
   defaultMain [
     bgroup "stm-map" [
         bench "simple insert" $ nfIO $ do
-           t <- atomically Ix.new
-           forM_ keys $ \k -> atomically $ Ix.insert t k ()
+           m <- atomically Ix.new
+           let chunks = S.chunksOf chunkSize keys
+           as <- forM chunks $ \c -> async $ forM c $ \k -> atomically $ Ix.insert m k ()
+           forM_ as wait
+         ,
+         bench "insert into TVar Map" $ nfIO $ do
+            m <- atomically $ newTVar M.empty
+            let chunks = S.chunksOf chunkSize keys
+            as <- forM chunks $ \c -> async $ forM c $ \k ->
+                                      atomically $ modifyTVar' m $ M.insert k ()
+            forM_ as wait
        ]
     ]
 
-keyGenerator :: MWC.Rand IO Text.Text
-keyGenerator = do
+textKeyGenerator :: MWC.Rand IO Text.Text
+textKeyGenerator = do
   l <- length
   s <- replicateM l char
   return $! Text.pack s
   where
     length = MWC.uniformR (7, 20)
     char = Char.chr <$> MWC.uniformR (Char.ord 'a', Char.ord 'z')
+
+intKeyGenerator :: MWC.Rand IO Int
+intKeyGenerator = MWC.uniformR (1, 1000000000) >>= \x -> return $! x
+  -- l <- length
+  -- s <- replicateM l char
+  -- return $! Text.pack s
+  -- where
+  --   length = MWC.uniformR (7, 20)
+  --   char = Char.chr <$> MWC.uniformR (Char.ord 'a', Char.ord 'z')
