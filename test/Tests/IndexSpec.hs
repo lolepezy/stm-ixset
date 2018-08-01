@@ -32,7 +32,7 @@ qcStmMapProps = testGroup "STM Index Map properties"
   [
     QC.testProperty
       "Get after insert returns the same element"
-      prop_get_always_returns_inserted_element,
+      prop_get_always_returns_inserted_elements,
 
     QC.testProperty
       "Get after insert returns the same element unless it's removed explicitly"
@@ -57,10 +57,58 @@ qcStmMapProps = testGroup "STM Index Map properties"
 
 stmMapUnitTests = testGroup "STM Map unit tests"
   [
+  --HU.testCase "Should insert and get" should_insert_and_get,
+    -- HU.testCase "Should insert and get" should_insert_and_get_remove_and_dont_get
   ]
 
-prop_get_always_returns_inserted_element :: QC.Property
-prop_get_always_returns_inserted_element = monadicIO $ do
+should_insert_and_get = do
+  m <- atomically M.new
+
+  let check s k = atomically (M.get m k) >>= \v -> HU.assertBool s $ v == Just ("v" ++ show k)
+    in do
+      atomically $ M.insert m 1 "v1"
+      check "v1" 1
+
+      atomically $ M.insert m 6 "v6"
+      check "v62" 6
+      check "v12" 1
+
+      atomically $ M.insert m 0 "v0"
+      check "v13" 1
+      check "v03" 0
+      check "v63" 6
+
+
+should_insert_and_get_remove_and_dont_get = do
+  m <- atomically M.new
+
+  forM_ [-11,-12,10,-1,2,-9] $ \k -> atomically $ M.insert m k ("v" ++ show k)
+
+  let check s k = atomically (M.get m k) >>= \v -> HU.assertBool s $ v == Just ("v" ++ show k)
+    in do
+      s <- atomically $ M.dumpLine m
+      print $ "s0 = " ++ show s
+
+      atomically $ M.remove m (-11)
+      -- [-10,-6,-16]
+
+      s <- atomically $ M.dumpLine m
+      print $ "s = " ++ show s
+
+      atomically $ M.remove m (10)
+
+      s1 <- atomically $ M.dumpLine m
+      print $ "s1 = " ++ show s1
+
+      atomically $ M.remove m (1)
+
+      s2 <- atomically $ M.dumpLine m
+      print $ "s2 = " ++ show s2
+
+
+
+prop_get_always_returns_inserted_elements :: QC.Property
+prop_get_always_returns_inserted_elements = monadicIO $ do
   keys :: [Int] <- pick arbitrary
   m <- run $ atomically M.new
   run $ forM keys $ \k ->
@@ -69,6 +117,8 @@ prop_get_always_returns_inserted_element = monadicIO $ do
   values <- run $ forM keys $ \k ->
     atomically $ M.get m k
 
+  s <- run $ atomically $ M.dump m
+  -- run $ print $ "s = " ++ s
   assert $ [ "v" ++ show k | k <- keys] == catMaybes values
 
 
@@ -106,7 +156,7 @@ prop_getLT_returns_smaller_elements = lowerGreaterTest (<) M.getLT
 prop_getGT_returns_smaller_elements :: QC.Property
 prop_getGT_returns_smaller_elements = lowerGreaterTest (>) M.getGT
 
-lowerGreaterTest :: (Int -> Int -> Bool) -> (TTree Int String -> Int -> STM [(Int, String)]) -> QC.Property
+lowerGreaterTest :: (Int -> Int -> Bool) -> (M.Map Int String -> Int -> STM [(Int, String)]) -> QC.Property
 lowerGreaterTest comparison extract = monadicIO $ do
   keys :: [Int] <- pick arbitrary
   m <- run $ atomically M.new

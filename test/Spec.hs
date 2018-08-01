@@ -25,5 +25,6 @@ import Tests.STMIxSetSpec
 main :: IO ()
 main = defaultMain $ testGroup "All tests" [
   qcStmMapProps,
-  qcStmIxsProps
+  qcStmIxsProps,
+  stmMapUnitTests
   ]

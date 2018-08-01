@@ -53,8 +53,12 @@ benchmarks:
     - text
     - stm-ixset
     - criterion
+    - async
+    - split
+    - stm-stats
     - mwc-random
     - mwc-random-monad
+    - ixset-typed
     ghc-options:
     - -O2
     - -rtsopts

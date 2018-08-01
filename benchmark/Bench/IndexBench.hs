@@ -11,7 +11,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RankNTypes #-}
 
-module Bench.STMTreeMapBench where
+module Bench.IndexBench where
 
 import Control.Monad
 import Control.Monad.STM
@@ -41,22 +41,41 @@ chunkSize :: Int = 10000
 
 indexBench :: IO ()
 indexBench = do
-  keys <- MWC.runWithCreate $ replicateM rows intKeyGenerator
+  keys <- MWC.runWithCreate $ replicateM rows textKeyGenerator
   defaultMain [
-    bgroup "stm-map" [
-        bench "simple insert" $ nfIO $ do
+    bgroup "STM Index Map" [
+        bench "insert" $ nfIO $ do
            m <- atomically Ix.new
            let chunks = S.chunksOf chunkSize keys
            as <- forM chunks $ \c -> async $ forM c $ \k -> atomically $ Ix.insert m k ()
            forM_ as wait
-         ,
-         bench "insert into TVar Map" $ nfIO $ do
-            m <- atomically $ newTVar M.empty
+        ,
+        bench "insert+delete" $ nfIO $ do
+            m <- atomically Ix.new
             let chunks = S.chunksOf chunkSize keys
-            as <- forM chunks $ \c -> async $ forM c $ \k ->
-                                      atomically $ modifyTVar' m $ M.insert k ()
+            as <- forM chunks $ \c -> async $ forM c $ \k -> atomically $ Ix.insert m k ()
             forM_ as wait
-       ]
+            as <- forM chunks $ \c -> async $ forM c $ \k -> atomically $ Ix.remove m k
+            forM_ as wait
+       ],
+       bgroup "TVar Map" [
+           bench "insert" $ nfIO $ do
+              m <- atomically $ newTVar M.empty
+              let chunks = S.chunksOf chunkSize keys
+              as <- forM chunks $ \c -> async $ forM c $ \k ->
+                                        atomically $ modifyTVar' m $ M.insert k ()
+              forM_ as wait
+            ,
+            bench "insert+delete" $ nfIO $ do
+               m <- atomically $ newTVar M.empty
+               let chunks = S.chunksOf chunkSize keys
+               as <- forM chunks $ \c -> async $ forM c $ \k ->
+                                         atomically $ modifyTVar' m $ M.insert k ()
+               forM_ as wait
+               as <- forM chunks $ \c -> async $ forM c $ \k ->
+                                         atomically $ modifyTVar' m $ M.delete k
+               forM_ as wait
+        ]
     ]
 
 textKeyGenerator :: MWC.Rand IO Text.Text

@@ -71,7 +71,7 @@ data IxSet (ixs :: [*]) (v :: *) where
 
 data Idx v ix where
   Hole   :: (Eq ix)      => Idx v ix
-  IdxFun :: Index.Key ix => (v -> ix) -> !(Index.TTree ix (TS.Set v)) -> Idx v ix
+  IdxFun :: Index.Key ix => (v -> ix) -> !(Index.Map ix (TS.Set v)) -> Idx v ix
 
 type AllKeys ixs = (All Eq  ixs, All Ord ixs)
 

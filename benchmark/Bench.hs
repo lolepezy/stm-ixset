@@ -13,7 +13,10 @@
 
 import Criterion.Main
 
-import qualified Bench.STMTreeMapBench as IxBench
+import qualified Bench.IndexBench as IxBench
+import qualified Bench.STMIxSetBench as IxSetBench
 
 main :: IO ()
-main = IxBench.indexBench
+main = do
+  IxBench.indexBench
+  IxSetBench.ixSetBench
