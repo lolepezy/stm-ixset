@@ -41,7 +41,8 @@ import qualified Control.Concurrent.STM.Stats as Stat
 import Data.IxSet.Index as Ix
 import Data.IxSet.STM as Ixs
 
-import Bench.TestData as TD
+import qualified Bench.TestData as TD
+import qualified Data.IxSet.Typed as IXT
 
 rows :: Int = 100000
 chunkSize :: Int = 10000
@@ -53,34 +54,34 @@ ixSetBench = do
     bgroup "STM IxSet" [
         bench "insert" $ nfIO $ do
            m <- atomically TD.mkIdxSet
-           let chunks = S.chunksOf chunkSize keys
-           as <- forM chunks $ \c -> async $ forM c $ \k -> atomically $ Ixs.insert m (mkEntry k)
+           let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
+           as <- forM chunks $ \c -> async $ forM c $ \e -> atomically $ Ixs.insert m e
            forM_ as wait
         ,
         bench "insert+delete" $ nfIO $ do
             m <- atomically TD.mkIdxSet
-            let chunks = S.chunksOf chunkSize keys
-            as <- forM chunks $ \c -> async $ forM c $ \k -> atomically $ Ixs.insert m (mkEntry k)
+            let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
+            as <- forM chunks $ \c -> async $ forM c $ \e -> atomically $ Ixs.insert m e
             forM_ as wait
-            as <- forM chunks $ \c -> async $ forM c $ \k -> atomically $ Ixs.remove m (mkEntry k)
+            as <- forM chunks $ \c -> async $ forM c $ \e -> atomically $ Ixs.remove m e
             forM_ as wait
        ],
        bgroup "TVar IxSet" [
            bench "insert" $ nfIO $ do
-              m <- atomically $ newTVar M.empty
-              let chunks = S.chunksOf chunkSize keys
-              as <- forM chunks $ \c -> async $ forM c $ \k ->
-                                        atomically $ modifyTVar' m $ M.insert k ()
+              m <- atomically $ newTVar (IXT.empty :: TD.IxEntry)
+              let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
+              as <- forM chunks $ \c -> async $ forM c $ \e ->
+                                        atomically $ modifyTVar' m $ IXT.insert e
               forM_ as wait
             ,
             bench "insert+delete" $ nfIO $ do
-               m <- atomically $ newTVar M.empty
-               let chunks = S.chunksOf chunkSize keys
-               as <- forM chunks $ \c -> async $ forM c $ \k ->
-                                         atomically $ modifyTVar' m $ M.insert k ()
+               m <- atomically $ newTVar (IXT.empty :: TD.IxEntry)
+               let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
+               as <- forM chunks $ \c -> async $ forM c $ \e ->
+                                         atomically $ modifyTVar' m $ IXT.insert e
                forM_ as wait
-               as <- forM chunks $ \c -> async $ forM c $ \k ->
-                                         atomically $ modifyTVar' m $ M.delete k
+               as <- forM chunks $ \c -> async $ forM c $ \e ->
+                                         atomically $ modifyTVar' m $ IXT.delete e
                forM_ as wait
         ]
     ]
