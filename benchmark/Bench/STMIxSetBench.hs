@@ -51,40 +51,73 @@ ixSetBench :: IO ()
 ixSetBench = do
   keys <- MWC.runWithCreate $ replicateM rows intKeyGenerator
   defaultMain [
-    bgroup "STM IxSet" [
-        bench "insert" $ nfIO $ do
-           m <- atomically TD.mkIdxSet
-           let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
-           as <- forM chunks $ \c -> async $ forM c $ \e -> atomically $ Ixs.insert m e
-           forM_ as wait
-        ,
-        bench "insert+delete" $ nfIO $ do
-            m <- atomically TD.mkIdxSet
-            let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
-            as <- forM chunks $ \c -> async $ forM c $ \e -> atomically $ Ixs.insert m e
-            forM_ as wait
-            as <- forM chunks $ \c -> async $ forM c $ \e -> atomically $ Ixs.remove m e
-            forM_ as wait
-       ],
-       bgroup "TVar IxSet" [
-           bench "insert" $ nfIO $ do
-              m <- atomically $ newTVar (IXT.empty :: TD.IxEntry)
-              let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
-              as <- forM chunks $ \c -> async $ forM c $ \e ->
-                                        atomically $ modifyTVar' m $ IXT.insert e
-              forM_ as wait
-            ,
-            bench "insert+delete" $ nfIO $ do
-               m <- atomically $ newTVar (IXT.empty :: TD.IxEntry)
-               let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
-               as <- forM chunks $ \c -> async $ forM c $ \e ->
-                                         atomically $ modifyTVar' m $ IXT.insert e
-               forM_ as wait
-               as <- forM chunks $ \c -> async $ forM c $ \e ->
-                                         atomically $ modifyTVar' m $ IXT.delete e
-               forM_ as wait
-        ]
+      bgroup "STM IxSet" [
+        bench "insert" $ nfIO $ stmIxSetinsert keys,
+        bench "insert+delete" $ nfIO $ stmIxSetInsertDelete keys,
+        bench "insert+select" $ nfIO $ stmIxSetInsertSelect keys
+      ],
+      bgroup "TVar IxSet" [
+       bench "insert" $ nfIO $ ixSetInsert keys,
+       bench "insert+delete" $ nfIO $ ixSetInsertDelete keys,
+       bench "insert+select" $ nfIO $ ixSetInsertSelect keys
+      ]
     ]
+
+
+stmIxSetinsert keys = do
+  m <- atomically TD.mkIdxSet
+  let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
+  as <- forM chunks $ \c -> async $ forM c $ \e -> atomically $ Ixs.insert m e
+  forM_ as wait
+
+stmIxSetInsertDelete keys = do
+  m <- atomically TD.mkIdxSet
+  let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
+  as <- forM chunks $ \c -> async $ forM c $ \e -> atomically $ Ixs.insert m e
+  forM_ as wait
+  as <- forM chunks $ \c -> async $ forM c $ \e -> atomically $ Ixs.remove m e
+  forM_ as wait
+
+stmIxSetInsertSelect keys = do
+  m <- atomically TD.mkIdxSet
+  let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
+  as <- forM chunks $ \c -> async $ forM c $ \e -> atomically $ Ixs.insert m e
+  forM_ as wait
+  replicateM_ 20 $ do
+    as <- forM chunks $ \c -> async $ forM c $ \e -> atomically $ Ixs.get m (TD.field1 e)
+    forM_ as wait
+
+ixSetInsert keys = do
+  m <- atomically $ newTVar (IXT.empty :: TD.IxEntry)
+  let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
+  as <- forM chunks $ \c -> async $ forM c $ \e ->
+                           atomically $ modifyTVar' m $ IXT.insert e
+  forM_ as wait
+
+ixSetInsertDelete keys = do
+  m <- atomically $ newTVar (IXT.empty :: TD.IxEntry)
+  let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
+  as <- forM chunks $ \c -> async $ forM c $ \e ->
+                            atomically $ modifyTVar' m $ IXT.insert e
+  forM_ as wait
+  as <- forM chunks $ \c -> async $ forM c $ \e ->
+                            atomically $ modifyTVar' m $ IXT.delete e
+  forM_ as wait
+
+ixSetInsertSelect keys = do
+  m <- atomically $ newTVar (IXT.empty :: TD.IxEntry)
+  let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
+  as <- forM chunks $ \c -> async $ forM c $ \e ->
+                            atomically $ modifyTVar' m $ IXT.insert e
+  forM_ as wait
+  replicateM_ 20 $ do
+    as <- forM chunks $ \c -> async $ forM c $ \e ->
+                              atomically $ do
+                                x <- readTVar m
+                                return $ IXT.getEQ (TD.field1 e) x
+    forM_ as wait
+
+
 
 textKeyGenerator :: MWC.Rand IO Text.Text
 textKeyGenerator = do
