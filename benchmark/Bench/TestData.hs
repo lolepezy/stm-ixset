@@ -41,7 +41,7 @@ field3 :: Entry -> Index2
 field3 (_, _, i) = i
 
 mkEntry :: Int -> Entry
-mkEntry i = (Index1 i, SField ("bla" ++ show i), Index2 (2*i))
+mkEntry i = (Index1 i, SField ("bla" ++ show i), Index2 (i `mod` 127))
 
 mkIdxSet = do
   i1 <- Ixs.idxFun field1
