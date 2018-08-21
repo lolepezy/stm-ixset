@@ -71,9 +71,11 @@ data IxSet (ixs :: [*]) (v :: *) where
 
 data Idx v ix where
   Hole   :: (Eq ix)      => Idx v ix
-  IdxFun :: Index.Key ix => (v -> ix) -> !(Index.Map ix (TS.Set v)) -> Idx v ix
+  IdxFun :: Index.Key ix => (v -> ix) -> !(Index.Map ix (IxLeaf v)) -> Idx v ix
 
 type AllKeys ixs = (All Eq  ixs, All Ord ixs)
+
+data IxLeaf v = IxLeafVal v | IxLeafSet (TS.Set v)
 
 ixList :: MkIxList ixs ixs a r => r
 ixList = ixList' id
@@ -108,11 +110,13 @@ insert (IdxSet set indexes) v = do
       IdxFun f t -> do
         let k  = f v
         Index.get t k >>= \case
-          Nothing -> do
-            s <- TS.new
-            TS.insert v s
-            Index.insert t k s
-          Just s  -> TS.insert v s
+          Nothing -> Index.insert t k (IxLeafVal v)
+          Just s  -> case s of
+            IxLeafVal v -> do
+              s <- TS.new
+              TS.insert v s
+              Index.insert t k (IxLeafSet s)
+            IxLeafSet s -> TS.insert v s
 
 
 remove :: (Eq v, Hashable v) =>
@@ -126,10 +130,16 @@ remove (IdxSet set indexes) v = do
       IdxFun f t -> do
         let k = f v
         s <- Index.get t k
-        forM_ s $ \s' -> do
-          TS.delete v s'
-          empty <- TS.null s'
-          when empty $ Index.remove t k
+        forM_ s $ \case
+          IxLeafSet s' -> do
+            TS.delete v s'
+            {- Do not try to figure out how big the set is and replace
+               it with IxLeafVal, it will be to expensive to calculate
+               size for large sets.
+            -}
+            empty <- TS.null s'
+            when empty $ Index.remove t k
+          IxLeafVal v -> Index.remove t k
 
 
 get :: (Index.Key i, TLookup ixs i) =>
@@ -137,8 +147,10 @@ get :: (Index.Key i, TLookup ixs i) =>
 get set i =
   case getIdx set i of
     IdxFun _ t -> Index.get t i >>= \case
-        Nothing     -> return []
-        Just values -> LT.toList $ TS.stream values
+        Nothing -> return []
+        Just s  -> case s of
+          IxLeafVal v  -> return [v]
+          IxLeafSet s' -> LT.toList $ TS.stream s'
 
 
 getIdx :: (Index.Key i, TLookup ixs i) => IxSet ixs v -> i -> Idx v i
