@@ -52,14 +52,14 @@ ixSetBench = do
   keys <- MWC.runWithCreate $ replicateM rows intKeyGenerator
   defaultMain [
       bgroup "STM IxSet" [
-        bench "insert" $ nfIO $ stmIxSetinsert keys,
-        bench "insert+delete" $ nfIO $ stmIxSetInsertDelete keys,
-        bench "insert+select" $ nfIO $ stmIxSetInsertSelect keys
+        bench "concurrent insert" $ nfIO $ stmIxSetinsert keys,
+        bench "concurrent insert+delete" $ nfIO $ stmIxSetInsertDelete keys,
+        bench "concurrent insert+select" $ nfIO $ stmIxSetInsertSelect keys
       ],
       bgroup "TVar IxSet" [
-       bench "insert" $ nfIO $ ixSetInsert keys,
-       bench "insert+delete" $ nfIO $ ixSetInsertDelete keys,
-       bench "insert+select" $ nfIO $ ixSetInsertSelect keys
+       bench "concurrent insert" $ nfIO $ ixSetInsert keys,
+       bench "concurrent insert+delete" $ nfIO $ ixSetInsertDelete keys,
+       bench "concurrent insert+select" $ nfIO $ ixSetInsertSelect keys
       ]
     ]
 
