@@ -38,6 +38,7 @@ import Control.Concurrent.STM.TVar
 
 import qualified STMContainers.Set as TS
 import qualified STMContainers.Map as TM
+import qualified Data.Set as S
 
 import qualified ListT as LT
 
@@ -75,7 +76,7 @@ data Idx v ix where
 
 type AllKeys ixs = (All Eq  ixs, All Ord ixs)
 
-data IxLeaf v = IxLeafVal v | IxLeafSet (TS.Set v)
+data IxLeaf v = IxLeafVal !v | IxLeafSet !(TVar (S.Set v))
 
 ixList :: MkIxList ixs ixs a r => r
 ixList = ixList' id
@@ -99,7 +100,7 @@ new indexes = do
 idxFun :: Index.Key ix => (v -> ix) -> STM (Idx v ix)
 idxFun f = IdxFun f <$> Index.new
 
-insert :: (Eq v, Hashable v) =>
+insert :: (Eq v, Hashable v, Ord v) =>
           TraverseIdxs ixs v =>
           IxSet ixs v -> v -> STM ()
 insert (IdxSet set indexes) v = do
@@ -112,14 +113,13 @@ insert (IdxSet set indexes) v = do
         Index.get t k >>= \case
           Nothing -> Index.insert t k (IxLeafVal v)
           Just s  -> case s of
-            IxLeafVal v -> do
-              s <- TS.new
-              TS.insert v s
-              Index.insert t k (IxLeafSet s)
-            IxLeafSet s -> TS.insert v s
+            IxLeafVal v' -> do
+              s' <- newTVar $ S.fromList [v, v']
+              Index.insert t k (IxLeafSet s')
+            IxLeafSet s' -> modifyTVar' s' (S.insert v)
 
 
-remove :: (Eq v, Hashable v) =>
+remove :: (Eq v, Ord v, Hashable v) =>
           TraverseIdxs ixs v =>
           IxSet ixs v -> v -> STM ()
 remove (IdxSet set indexes) v = do
@@ -132,13 +132,16 @@ remove (IdxSet set indexes) v = do
         s <- Index.get t k
         forM_ s $ \case
           IxLeafSet s' -> do
-            TS.delete v s'
+            s <- readTVar s'
+            let newS = S.delete v s
             {- Do not try to figure out how big the set is and replace
                it with IxLeafVal, it will be to expensive to calculate
                size for large sets.
             -}
-            empty <- TS.null s'
-            when empty $ Index.remove t k
+            if S.null newS then
+              Index.remove t k
+            else
+              writeTVar s' newS                
           IxLeafVal v -> Index.remove t k
 
 
@@ -150,7 +153,7 @@ get set i =
         Nothing -> return []
         Just s  -> case s of
           IxLeafVal v  -> return [v]
-          IxLeafSet s' -> LT.toList $ TS.stream s'
+          IxLeafSet s' -> S.toList <$> readTVar s'
 
 
 getIdx :: (Index.Key i, TLookup ixs i) => IxSet ixs v -> i -> Idx v i
