@@ -9,7 +9,6 @@
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE RankNTypes #-}
 
 module Bench.STMIxSetBench where
@@ -36,8 +35,6 @@ import qualified Data.Char as Char
 
 import qualified Data.List.Split as S
 
-import qualified Control.Concurrent.STM.Stats as Stat
-
 import Data.IxSet.Index as Ix
 import Data.IxSet.STM as Ixs
 
@@ -49,75 +46,130 @@ chunkSize :: Int = 10000
 
 ixSetBench :: IO ()
 ixSetBench = do
-  keys <- MWC.runWithCreate $ replicateM rows intKeyGenerator
+  keys       <- MWC.runWithCreate $ replicateM rows intKeyGenerator
+  aLotOfKeys <- MWC.runWithCreate $ replicateM (500*1000) intKeyGenerator
+  let aLotOfEntries = map TD.mkEntry aLotOfKeys
+  bigStm     <- bigSet aLotOfKeys TD.mkIdxSet Ixs.insert
+  bigIxSet   <- bigSet aLotOfKeys
+                  (newTVar (IXT.empty :: TD.IxEntry))
+                  (\m e -> modifyTVar' m $ IXT.insert e)
+
   defaultMain [
-      bgroup "STM IxSet" [
-        bench "concurrent insert" $ nfIO $ stmIxSetinsert keys,
-        bench "concurrent insert+delete" $ nfIO $ stmIxSetInsertDelete keys,
-        bench "concurrent insert+select" $ nfIO $ stmIxSetInsertSelect keys
+      bgroup "STM IxSet big" [
+        bench "select field 1" $ nfIO $ forM_ aLotOfEntries $ \e -> atomically $ Ixs.get bigStm (TD.field1 e),
+        bench "select field 2" $ nfIO $ forM_ aLotOfEntries $ \e -> atomically $ Ixs.get bigStm (TD.field2 e),
+        bench "select field 3" $ nfIO $ forM_ aLotOfEntries $ \e -> atomically $ Ixs.get bigStm (TD.field3 e)
       ],
-      bgroup "TVar IxSet" [
-       bench "concurrent insert" $ nfIO $ ixSetInsert keys,
-       bench "concurrent insert+delete" $ nfIO $ ixSetInsertDelete keys,
-       bench "concurrent insert+select" $ nfIO $ ixSetInsertSelect keys
+      bgroup "TVar IxSet big" [
+        bench "select field 1" $ nfIO $ forM_ aLotOfEntries $ \e -> atomically $ getFromIxSet bigIxSet e TD.field1,
+        bench "select field 2" $ nfIO $ forM_ aLotOfEntries $ \e -> atomically $ getFromIxSet bigIxSet e TD.field2,
+        bench "select field 3" $ nfIO $ forM_ aLotOfEntries $ \e -> atomically $ getFromIxSet bigIxSet e TD.field3
       ]
+      -- bgroup "STM IxSet sequential" [
+      --   bench "insert" $ nfIO $ seqStmIxSetInsert keys,
+      --   bench "insert+delete" $ nfIO $ seqStmIxSetInsertDelete keys,
+      --   bench "insert+select" $ nfIO $ seqStmIxSetInsertSelect keys
+      -- ],
+      -- bgroup "STM IxSet concurrent" [
+      --   bench "concurrent insert" $ nfIO $ stmIxSetInsert keys,
+      --   bench "concurrent insert+delete" $ nfIO $ stmIxSetInsertDelete keys,
+      --   bench "concurrent insert+select" $ nfIO $ stmIxSetInsertSelect keys
+      -- ],
+      -- bgroup "TVar IxSet sequential" [
+      --  bench "insert" $ nfIO $ seqIxSetInsert keys,
+      --  bench "insert+delete" $ nfIO $ seqIxSetInsertDelete keys,
+      --  bench " insert+select" $ nfIO $ seqIxSetInsertSelect keys
+      -- ],
+      -- bgroup "TVar IxSet concurrent" [
+      --  bench "concurrent insert" $ nfIO $ ixSetInsert keys,
+      --  bench "concurrent insert+delete" $ nfIO $ ixSetInsertDelete keys,
+      --  bench "concurrent insert+select" $ nfIO $ ixSetInsertSelect keys
+      -- ]
     ]
 
+seqStmIxSetInsert keys = baseInsertSeq keys TD.mkIdxSet Ixs.insert
+seqStmIxSetInsertDelete keys = baseInsertDeleteSeq keys TD.mkIdxSet Ixs.insert Ixs.remove
+seqStmIxSetInsertSelect keys = baseInsertSelectSeq keys TD.mkIdxSet Ixs.insert Ixs.get
 
-stmIxSetinsert keys = do
-  m <- atomically TD.mkIdxSet
+stmIxSetInsert keys = baseInsert keys TD.mkIdxSet Ixs.insert
+stmIxSetInsertDelete keys = baseInsertDelete keys TD.mkIdxSet Ixs.insert Ixs.remove
+stmIxSetInsertSelect keys = baseInsertSelect keys TD.mkIdxSet Ixs.insert Ixs.get
+
+
+ixSetInsert keys = baseInsert keys
+                      (newTVar (IXT.empty :: TD.IxEntry))
+                      (\m e -> modifyTVar' m $ IXT.insert e)
+
+ixSetInsertDelete keys = baseInsertDelete keys
+                            (newTVar (IXT.empty :: TD.IxEntry))
+                            (\m e -> modifyTVar' m (IXT.insert e))
+                            (\m e -> modifyTVar' m (IXT.delete e))
+
+ixSetInsertSelect keys = baseInsertDelete keys
+                            (newTVar (IXT.empty :: TD.IxEntry))
+                            (\m e -> modifyTVar' m (IXT.insert e))
+                            (\m e -> getFromIxSet m e TD.field1)
+
+seqIxSetInsert keys = baseInsertSeq keys
+                      (newTVar (IXT.empty :: TD.IxEntry))
+                      (\m e -> modifyTVar' m $ IXT.insert e)
+
+seqIxSetInsertDelete keys = baseInsertDeleteSeq keys
+                            (newTVar (IXT.empty :: TD.IxEntry))
+                            (\m e -> modifyTVar' m (IXT.insert e))
+                            (\m e -> modifyTVar' m (IXT.delete e))
+
+seqIxSetInsertSelect keys = baseInsertDeleteSeq keys
+                            (newTVar (IXT.empty :: TD.IxEntry))
+                            (\m e -> modifyTVar' m (IXT.insert e))
+                            (\m e -> getFromIxSet m e TD.field1)
+
+getFromIxSet m e f = readTVar m >>= \x -> return $ IXT.getEQ (f e) x
+
+baseInsertSeq keys create insert = do
+  m <- atomically create
   let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
-  as <- forM chunks $ \c -> async $ forM c $ \e -> atomically $ Ixs.insert m e
+  forM_ chunks $ \c -> forM c $ \e -> atomically (insert m e)
+
+baseInsertDeleteSeq keys create insert delete = do
+  m <- atomically create
+  let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
+  forM_ chunks $ \c -> forM_ c $ \e -> atomically (insert m e)
+  forM_ chunks $ \c -> forM_ c $ \e -> atomically (delete m e)
+
+baseInsertSelectSeq keys create insert select = do
+  m <- atomically create
+  let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
+  forM_ chunks $ \c -> forM_ c $ \e -> atomically (insert m e)
+  replicateM_ 30 $ forM_ chunks $ \c -> forM_ c $ \e -> atomically (select m (TD.field1 e))
+
+baseInsert keys create insert = do
+  m <- atomically create
+  let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
+  as <- forM chunks $ \c -> async $ forM c $ \e -> atomically (insert m e)
   forM_ as wait
 
-stmIxSetInsertDelete keys = do
-  m <- atomically TD.mkIdxSet
+baseInsertDelete keys create insert delete = do
+  m <- atomically create
   let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
-  as <- forM chunks $ \c -> async $ forM c $ \e -> atomically $ Ixs.insert m e
+  as <- forM chunks $ \c -> async $ forM c $ \e -> atomically (insert m e)
   forM_ as wait
-  as <- forM chunks $ \c -> async $ forM c $ \e -> atomically $ Ixs.remove m e
+  as <- forM chunks $ \c -> async $ forM c $ \e -> atomically (delete m e)
   forM_ as wait
 
-stmIxSetInsertSelect keys = do
-  m <- atomically TD.mkIdxSet
+baseInsertSelect keys create insert select = do
+  m <- atomically create
   let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
-  as <- forM chunks $ \c -> async $ forM c $ \e -> atomically $ Ixs.insert m e
-  forM_ as wait
-  replicateM_ 20 $ do
-    as <- forM chunks $ \c -> async $ forM c $ \e -> atomically $ Ixs.get m (TD.field1 e)
+  asIns <- forM chunks $ \c -> async $ forM c $ \e -> atomically (insert m e)
+  replicateM_ 30 $ do
+    as <- forM chunks $ \c -> async $ forM c $ \e -> atomically (select m (TD.field1 e))
     forM_ as wait
+  forM_ asIns wait
 
-ixSetInsert keys = do
-  m <- atomically $ newTVar (IXT.empty :: TD.IxEntry)
-  let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
-  as <- forM chunks $ \c -> async $ forM c $ \e ->
-                           atomically $ modifyTVar' m $ IXT.insert e
-  forM_ as wait
-
-ixSetInsertDelete keys = do
-  m <- atomically $ newTVar (IXT.empty :: TD.IxEntry)
-  let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
-  as <- forM chunks $ \c -> async $ forM c $ \e ->
-                            atomically $ modifyTVar' m $ IXT.insert e
-  forM_ as wait
-  as <- forM chunks $ \c -> async $ forM c $ \e ->
-                            atomically $ modifyTVar' m $ IXT.delete e
-  forM_ as wait
-
-ixSetInsertSelect keys = do
-  m <- atomically $ newTVar (IXT.empty :: TD.IxEntry)
-  let chunks = S.chunksOf chunkSize $ map TD.mkEntry keys
-  as <- forM chunks $ \c -> async $ forM c $ \e ->
-                            atomically $ modifyTVar' m $ IXT.insert e
-  forM_ as wait
-  replicateM_ 20 $ do
-    as <- forM chunks $ \c -> async $ forM c $ \e ->
-                              atomically $ do
-                                x <- readTVar m
-                                return $ IXT.getEQ (TD.field1 e) x
-    forM_ as wait
-
-
+bigSet keys create insert = do
+  m <- atomically create
+  forM_ keys $ \k -> atomically (insert m (TD.mkEntry k))
+  return m
 
 textKeyGenerator :: MWC.Rand IO Text.Text
 textKeyGenerator = do

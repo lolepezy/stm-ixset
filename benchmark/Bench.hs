@@ -19,4 +19,4 @@ import qualified Bench.STMIxSetBench as IxSetBench
 main :: IO ()
 main = do
   IxBench.indexBench
-  IxSetBench.ixSetBench
+  -- IxSetBench.ixSetBench

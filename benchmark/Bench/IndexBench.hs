@@ -36,47 +36,60 @@ import qualified Control.Concurrent.STM.Stats as Stat
 
 import Data.IxSet.Index as Ix
 
+import qualified Bench.TestData as TD
+
 rows :: Int = 100000
 chunkSize :: Int = 10000
 
 indexBench :: IO ()
 indexBench = do
   keys <- MWC.runWithCreate $ replicateM rows textKeyGenerator
+  forM_ ([1..9] ++ [10, 100, 1000, 10000, 100 * 1000]) $ \len -> do
+    aLotOfKeys <- MWC.runWithCreate $ replicateM len intKeyGenerator
+    bigStm     <- bigSet aLotOfKeys Ix.new Ix.insert
+    d          <- atomically $ Ix.depth bigStm
+    print $ "key number = " ++ show len ++ " depth = " ++ show d
+
   defaultMain [
-    bgroup "STM Index Map" [
-        bench "insert" $ nfIO $ do
-           m <- atomically Ix.new
-           let chunks = S.chunksOf chunkSize keys
-           as <- forM chunks $ \c -> async $ forM c $ \k -> atomically $ Ix.insert m k ()
-           forM_ as wait
-        ,
-        bench "insert+delete" $ nfIO $ do
-            m <- atomically Ix.new
-            let chunks = S.chunksOf chunkSize keys
-            as <- forM chunks $ \c -> async $ forM c $ \k -> atomically $ Ix.insert m k ()
-            forM_ as wait
-            as <- forM chunks $ \c -> async $ forM c $ \k -> atomically $ Ix.remove m k
-            forM_ as wait
-       ],
-       bgroup "TVar Map" [
-           bench "insert" $ nfIO $ do
-              m <- atomically $ newTVar M.empty
-              let chunks = S.chunksOf chunkSize keys
-              as <- forM chunks $ \c -> async $ forM c $ \k ->
-                                        atomically $ modifyTVar' m $ M.insert k ()
-              forM_ as wait
-            ,
-            bench "insert+delete" $ nfIO $ do
-               m <- atomically $ newTVar M.empty
-               let chunks = S.chunksOf chunkSize keys
-               as <- forM chunks $ \c -> async $ forM c $ \k ->
-                                         atomically $ modifyTVar' m $ M.insert k ()
-               forM_ as wait
-               as <- forM chunks $ \c -> async $ forM c $ \k ->
-                                         atomically $ modifyTVar' m $ M.delete k
-               forM_ as wait
-        ]
+    -- bgroup "STM Index Map" [
+    --     bench "insert" $ nfIO $ do
+    --        m <- atomically Ix.new
+    --        let chunks = S.chunksOf chunkSize keys
+    --        as <- forM chunks $ \c -> async $ forM c $ \k -> atomically $ Ix.insert m k ()
+    --        forM_ as wait
+    --     ,
+    --     bench "insert+delete" $ nfIO $ do
+    --         m <- atomically Ix.new
+    --         let chunks = S.chunksOf chunkSize keys
+    --         as <- forM chunks $ \c -> async $ forM c $ \k -> atomically $ Ix.insert m k ()
+    --         forM_ as wait
+    --         as <- forM chunks $ \c -> async $ forM c $ \k -> atomically $ Ix.remove m k
+    --         forM_ as wait
+    --    ],
+    --    bgroup "TVar Map" [
+    --        bench "insert" $ nfIO $ do
+    --           m <- atomically $ newTVar M.empty
+    --           let chunks = S.chunksOf chunkSize keys
+    --           as <- forM chunks $ \c -> async $ forM c $ \k ->
+    --                                     atomically $ modifyTVar' m $ M.insert k ()
+    --           forM_ as wait
+    --         ,
+    --         bench "insert+delete" $ nfIO $ do
+    --            m <- atomically $ newTVar M.empty
+    --            let chunks = S.chunksOf chunkSize keys
+    --            as <- forM chunks $ \c -> async $ forM c $ \k ->
+    --                                      atomically $ modifyTVar' m $ M.insert k ()
+    --            forM_ as wait
+    --            as <- forM chunks $ \c -> async $ forM c $ \k ->
+    --                                      atomically $ modifyTVar' m $ M.delete k
+    --            forM_ as wait
+    --     ]
     ]
+
+bigSet keys create insert = do
+  m <- atomically create
+  forM_ keys $ \k -> atomically (insert m k ("val" ++ show k))
+  return m
 
 textKeyGenerator :: MWC.Rand IO Text.Text
 textKeyGenerator = do

@@ -63,6 +63,6 @@ benchmarks:
     - -O2
     - -rtsopts
     - -threaded
-    - -with-rtsopts=-N
+    - -with-rtsopts=-N8
     main:               Bench.hs
     source-dirs:        benchmark

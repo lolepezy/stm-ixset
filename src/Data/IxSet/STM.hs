@@ -141,14 +141,14 @@ remove (IdxSet set indexes) v = do
             if S.null newS then
               Index.remove t k
             else
-              writeTVar s' newS                
+              writeTVar s' newS
           IxLeafVal v -> Index.remove t k
 
 
 get :: (Index.Key i, TLookup ixs i) =>
        IxSet ixs v -> i -> STM [v]
-get set i =
-  case getIdx set i of
+get m i =
+  case getIdx m i of
     IdxFun _ t -> Index.get t i >>= \case
         Nothing -> return []
         Just s  -> case s of
@@ -156,6 +156,7 @@ get set i =
           IxLeafSet s' -> S.toList <$> readTVar s'
 
 
+-- TODO Make it a type-level function
 getIdx :: (Index.Key i, TLookup ixs i) => IxSet ixs v -> i -> Idx v i
 getIdx (Flat _) _           = Hole
 getIdx (IdxSet _ indexes) i = tlookup (Proxy :: Proxy i) indexes

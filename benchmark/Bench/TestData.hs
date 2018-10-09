@@ -20,6 +20,9 @@ import Data.Hashable
 import Data.Proxy
 import Data.Data
 
+import Control.Monad.STM
+import Control.Monad
+
 import qualified Data.IxSet.Typed as IXT
 
 import qualified Data.IxSet.Index as Ix
@@ -43,12 +46,15 @@ field3 (_, _, i) = i
 mkEntry :: Int -> Entry
 mkEntry i = (Index1 i, SField ("bla" ++ show i), Index2 (i `mod` 127))
 
+mkIdxSet :: STM IxSetType
 mkIdxSet = do
   i1 <- Ixs.idxFun field1
   i2 <- Ixs.idxFun field2
   i3 <- Ixs.idxFun field3
   Ixs.new $ Ixs.ixList i1 i2 i3
 
+
+type IxSetType = Ixs.IxSet '[Index1, SField, Index2] (Index1, SField, Index2)
 
 -- ixset-typed stuff
 type Entry = (Index1, SField, Index2)
