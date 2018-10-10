@@ -20,11 +20,14 @@ import Control.Monad.STM
 
 import Data.IxSet.Index as M
 import Tests.IndexSpec
+import Tests.BalancedIndexSpec
 import Tests.STMIxSetSpec
 
 main :: IO ()
 main = defaultMain $ testGroup "All tests" [
   qcStmMapProps,
   qcStmIxsProps,
-  stmMapUnitTests
+  stmMapUnitTests,
+  qcStmBalacedIndexProps,
+  stmBalancedIndexUnitTests
   ]

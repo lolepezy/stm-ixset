@@ -41,13 +41,10 @@ data Map k v = Map {
   subTreeSize :: Int
 }
 
-newMap :: k -> v -> STM (Map k v)
-newMap k v = do
-  n <- newTVar (Branch k v Nob Nob 0)
-  return (Map n 20)
-
-empty :: STM (Map k v)
-empty = newTVar Nob >>= \c -> pure (Map c 20)
+new :: STM (Map k v)
+new = do
+  n <- newTVar Nob
+  pure (Map n 3)
 
 get :: Key k => Map k v -> k -> STM (Maybe v)
 get Map {..} k = get_ =<< readTVar content
@@ -59,7 +56,56 @@ get Map {..} k = get_ =<< readTVar content
     GT -> get_ right
     EQ -> pure $ Just v
 
+getLT :: Key k => Map k v -> k -> STM [(k, v)]
+getLT Map {..} k = get_ =<< readTVar content
+ where
+  get_ Nob                        = pure []
+  get_ (Joint t                 ) = readTVar t >>= get_
+  get_ (Branch k' v left right _)
+    | k' < k    = ((k', v) :) <$> nodeToList left
+    | otherwise = pure []
 
+
+getGT :: Key k => Map k v -> k -> STM [(k, v)]
+getGT Map {..} k = get_ =<< readTVar content
+ where
+   get_ Nob                        = pure []
+   get_ (Joint t                 ) = readTVar t >>= get_
+   get_ (Branch k' v left right _)
+     | k' > k    = ((k', v) :) <$> nodeToList right
+     | otherwise = pure []
+
+getBetween :: Key k => Map k v -> k -> k -> STM [(k, v)]
+getBetween Map {..} k1 k2 = get_ =<< readTVar content
+  where
+    get_ Nob                        = pure []
+    get_ (Joint t) = readTVar t >>= get_
+    get_ (Branch k' v left right _)
+      | k' >= k2 = pure []
+      | k' <= k1 = pure []
+      | otherwise = do
+        l' <- get_ left
+        r' <- get_ right
+        pure $ (k', v) : (l' ++ r')
+
+size :: Key k => Map k v -> STM Int
+size Map {..} = size_ =<< readTVar content
+ where
+  size_ Nob       = pure 0
+  size_ (Joint t) = readTVar t >>= size_
+  size_ (Branch _ _ left right _) = do
+    sl <- size_ left
+    sr <- size_ right
+    pure $ sl + sr + 1
+
+
+nodeToList :: Node k v -> STM [(k, v)]
+nodeToList Nob       = pure []
+nodeToList (Joint t) = readTVar t >>= nodeToList
+nodeToList (Branch k v left right _) = do
+  l' <- nodeToList left
+  r' <- nodeToList right
+  pure $ (k, v) : (l' ++ r')
 
 {-
   - make an accumulator to keep track of the current depth during the descent
@@ -76,20 +122,43 @@ insert :: Key k => Map k v -> k -> v -> STM ()
 insert m@(Map c mx) k v =
   readTVar c >>= updated 0 >>= ifJust (writeTVar c)
   where
-    updated depth Nob                        = mkNode 0 k v
-    updated depth (Branch k' _ left right _) =
+    updated depth Nob = mkNode depth
+    updated depth b@(Branch k' v' left right d) =
       case k `compare` k' of
-        LT -> updated (depth + 1) left
-        GT -> updated (depth + 1) right
-        EQ -> mkNode depth k v
+        LT -> updated (depth + 1) left >>= 
+              pure . fmap (\n -> Branch k' v' n right d)
+        GT -> updated (depth + 1) right >>= 
+              pure . fmap (\n -> Branch k' v' left n d)
+        EQ -> pure $ Just (Branch k v left right d)
     updated _ (Joint n) = do
       readTVar n >>= updated 0 >>= ifJust (writeTVar n)
       pure Nothing
 
-    mkNode depth k v
+    mkNode depth
       | depth < mx = pure $ Just n
       | otherwise  = Just . Joint <$> newTVar n
       where n = Branch k v Nob Nob depth
 
     ifJust f (Just x) = f x
     ifJust _ Nothing  = pure ()
+
+
+
+dumpLine :: (Show k, Show v) => Map k v -> STM String
+dumpLine Map {..} = dumpLine_ =<< readTVar content
+ where
+  dumpLine_ Nob    = return ""
+  dumpLine_ (Joint n) = readTVar n >>= dumpLine_
+  dumpLine_ (Branch k v left right d) = do 
+    l <- dumpLine_ left
+    r <- dumpLine_ right
+    pure
+      $  "("
+      ++ show k
+      ++ " -> "
+      ++ show v
+      ++ ", ["
+      ++ l
+      ++ " | "
+      ++ r
+      ++ "])"
