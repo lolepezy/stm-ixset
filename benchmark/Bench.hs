@@ -14,9 +14,11 @@
 import Criterion.Main
 
 import qualified Bench.IndexBench as IxBench
+import qualified Bench.BalancedIndexBench as BIxBench
 import qualified Bench.STMIxSetBench as IxSetBench
 
 main :: IO ()
 main = do
   IxBench.indexBench
+  BIxBench.indexBench
   -- IxSetBench.ixSetBench

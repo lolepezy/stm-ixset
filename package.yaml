@@ -27,6 +27,7 @@ dependencies:
 - stm
 - stm-containers
 - list-t
+- primitive
 
 library:
   source-dirs: src
@@ -63,6 +64,6 @@ benchmarks:
     - -O2
     - -rtsopts
     - -threaded
-    - -with-rtsopts=-N8
+    - -with-rtsopts=-N
     main:               Bench.hs
     source-dirs:        benchmark

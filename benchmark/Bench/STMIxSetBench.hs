@@ -36,6 +36,7 @@ import qualified Data.Char as Char
 import qualified Data.List.Split as S
 
 import Data.IxSet.Index as Ix
+import Data.IxSet.BalancedIndex as BIx
 import Data.IxSet.STM as Ixs
 
 import qualified Bench.TestData as TD

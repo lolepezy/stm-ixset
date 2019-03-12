@@ -11,7 +11,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RankNTypes #-}
 
-module Bench.IndexBench where
+module Bench.BalancedIndexBench where
 
 import Control.Monad
 import Control.Monad.STM
@@ -34,7 +34,7 @@ import qualified Data.List.Split as S
 
 import qualified Control.Concurrent.STM.Stats as Stat
 
-import Data.IxSet.Index as Ix
+import Data.IxSet.BalancedIndex as Ix
 
 import qualified Bench.TestData as TD
 
@@ -44,28 +44,33 @@ chunkSize :: Int = 10000
 indexBench :: IO ()
 indexBench = do
   keys <- MWC.runWithCreate $ replicateM rows textKeyGenerator
-  forM_ ([1..9] ++ [10, 100, 1000, 10000, 100 * 1000]) $ \len -> do
-    aLotOfKeys <- MWC.runWithCreate $ replicateM len intKeyGenerator
-    bigStm     <- bigSet aLotOfKeys Ix.new Ix.insert
-    d          <- atomically $ Ix.depth bigStm
-    print $ "key number = " ++ show len ++ " depth = " ++ show d
+  let keySetSizes = [1..9] ++ [11, 12, 13, 14, 15, 100, 1000, 10000, 100 * 1000]
+  aLotOfKeys <- MWC.runWithCreate $ replicateM (maximum keySetSizes) intKeyGenerator
+  forM_ keySetSizes $ \len -> do
+    let keys' = take len aLotOfKeys
+    bigStm <- bigSet keys' Ix.new Ix.insert
+    d      <- atomically $ Ix.depth bigStm
+    stat   <- atomically $ Ix.stats bigStm
+    dump   <- atomically $ Ix.dumpLine bigStm
+    print $ "key number = " ++ show len ++ " depth = " ++ show d ++ 
+            ", stats = " ++ show stat -- ++ " dump = " ++ show dump
 
   defaultMain [
-    bgroup "STM Index Map" [
+    bgroup "Balanced STM Index Map" [
         bench "insert" $ nfIO $ do
            m <- atomically Ix.new
            let chunks = S.chunksOf chunkSize keys
            as <- forM chunks $ \c -> async $ forM c $ \k -> atomically $ Ix.insert m k ()
            forM_ as wait
-        ,
-        bench "insert+delete" $ nfIO $ do
+        {-,
+         bench "insert+delete" $ nfIO $ do
             m <- atomically Ix.new
             let chunks = S.chunksOf chunkSize keys
             as <- forM chunks $ \c -> async $ forM c $ \k -> atomically $ Ix.insert m k ()
             forM_ as wait
             as <- forM chunks $ \c -> async $ forM c $ \k -> atomically $ Ix.remove m k
-            forM_ as wait
-       ],
+            forM_ as wait -}
+       ], 
        bgroup "TVar Map" [
            bench "insert" $ nfIO $ do
               m <- atomically $ newTVar M.empty

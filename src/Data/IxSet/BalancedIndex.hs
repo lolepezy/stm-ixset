@@ -12,6 +12,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
 
 {-
   Index based on AVL-tree, it has the same functionality as Index
@@ -44,7 +45,7 @@ data Map k v = Map {
 new :: STM (Map k v)
 new = do
   n <- newTVar Nob
-  pure (Map n 3)
+  pure (Map n 2)
 
 get :: Key k => Map k v -> k -> STM (Maybe v)
 get Map {..} k = get_ =<< readTVar content
@@ -119,37 +120,70 @@ nodeToList (Branch k v left right _) = do
 -}
 
 insert :: Key k => Map k v -> k -> v -> STM ()
-insert m@(Map c mx) k v =
-  readTVar c >>= updated 0 >>= ifJust (writeTVar c)
+insert m@(Map c mx) k v = do
+  (r, _) <- updated 0 =<< readTVar c
+  ifJust (writeTVar c) r
   where
-    updated depth Nob = mkNode depth
-    updated depth b@(Branch k' v' left right d) =
+    updated depth Nob = (,1) <$> mkNode depth
+    updated depth b@(Branch k' v' left right height) =
       case k `compare` k' of
-        LT -> updated (depth + 1) left >>= 
-              pure . fmap (\n -> Branch k' v' n right d)
-        GT -> updated (depth + 1) right >>= 
-              pure . fmap (\n -> Branch k' v' left n d)
-        EQ -> pure $ Just (Branch k v left right d)
+        LT -> do
+          (left', hl) <- updated (depth + 1) left
+          let height' = max (hl + 1) height
+          let x = (\l -> Branch k' v' l right height') <$> left'
+          pure (x, height')
+        GT -> do
+          (right', hr) <- updated (depth + 1) right
+          let height' = max height (hr + 1)
+          let x = (\r -> Branch k' v' left r height') <$> right'
+          pure (x, height')
+        EQ -> pure (Just (Branch k v left right height), height)
     updated _ (Joint n) = do
-      readTVar n >>= updated 0 >>= ifJust (writeTVar n)
-      pure Nothing
+      (r, h) <- updated 0 =<< readTVar n
+      ifJust (writeTVar n) r
+      pure (Nothing, h)
 
     mkNode depth
       | depth < mx = pure $ Just n
       | otherwise  = Just . Joint <$> newTVar n
-      where n = Branch k v Nob Nob depth
+      where n = Branch k v Nob Nob 1
 
     ifJust f (Just x) = f x
     ifJust _ Nothing  = pure ()
 
+
+depth :: Key k => Map k v -> STM Int
+depth Map {..} = depth_ =<< readTVar content
+  where
+    depth_ Nob = pure 0
+    depth_ (Joint n) = readTVar n >>= depth_
+    depth_ (Branch _ _ _ _ d) = pure d
+
+
+stats :: Map k v -> STM (Int, Int, Int)
+stats Map {..} = do
+  x <- readTVar content
+  stats_ x
+  where
+    stats_ Nob                = pure (1, 0, 0)
+    stats_ (Branch _ _ l r _) = do
+      (nl, bl, jl) <- stats_ l
+      (nr, br, jr) <- stats_ r
+      pure (nl + nr, bl + br + 1, jl + jr)
+    stats_ (Joint t)          = do
+      x <- readTVar t
+      (n, b, j) <- stats_ x
+      pure (n, b, j + 1)
 
 
 dumpLine :: (Show k, Show v) => Map k v -> STM String
 dumpLine Map {..} = dumpLine_ =<< readTVar content
  where
   dumpLine_ Nob    = return ""
-  dumpLine_ (Joint n) = readTVar n >>= dumpLine_
-  dumpLine_ (Branch k v left right d) = do 
+  dumpLine_ (Joint n) = do
+    dl <- dumpLine_ =<< readTVar n
+    pure $ "J:" ++ dl
+  dumpLine_ (Branch k v left right d) = do
     l <- dumpLine_ left
     r <- dumpLine_ right
     pure

@@ -74,7 +74,7 @@ data Idx v ix where
   Hole   :: (Eq ix)      => Idx v ix
   IdxFun :: Index.Key ix => (v -> ix) -> !(Index.Map ix (IxLeaf v)) -> Idx v ix
 
-type AllKeys ixs = (All Eq  ixs, All Ord ixs)
+type AllKeys ixs = (All Eq ixs, All Ord ixs)
 
 data IxLeaf v = IxLeafVal !v | IxLeafSet !(TVar (S.Set v))
 
@@ -89,6 +89,7 @@ instance MkIxList '[] ixs v (TList ixs (Idx v)) where
 
 instance MkIxList ixs ixs' v r => MkIxList (ix ': ixs) ixs' v (Idx v ix -> r) where
   ixList' acc ix = ixList' (\ x -> acc (ix :-: x))
+
 
 new :: AllKeys ixs =>
        (Eq v, Hashable v) =>
